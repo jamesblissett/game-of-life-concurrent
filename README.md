@@ -1,1 +1,1 @@
-very cool project please subscribe
+very ~cool~ bad project please subscribe
