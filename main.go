@@ -32,21 +32,21 @@ type cell struct {
 // distributorToIo defines all chans that the distributor goroutine will have to communicate with the io goroutine.
 // Note the restrictions on chans being send-only or receive-only to prevent bugs.
 type distributorToIo struct {
-	command chan<- ioCommand
-	idle    <-chan bool
+	command chan<- ioCommand		//send
+	idle    <-chan bool					//read
 
-	filename  chan<- string
-	inputVal  <-chan uint8
+	filename  chan<- string			//send
+	inputVal  <-chan uint8			//read
 }
 
 // ioToDistributor defines all chans that the io goroutine will have to communicate with the distributor goroutine.
 // Note the restrictions on chans being send-only or receive-only to prevent bugs.
 type ioToDistributor struct {
-	command <-chan ioCommand
-	idle    chan<- bool
+	command <-chan ioCommand		//read
+	idle    chan<- bool					//send
 
-	filename  <-chan string
-	inputVal  chan<- uint8
+	filename  <-chan string			//read
+	inputVal  chan<- uint8			//send
 }
 
 // distributorChans stores all the chans that the distributor goroutine will use.
