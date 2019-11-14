@@ -19,6 +19,9 @@ func mod(x int, y int) int {
 }
 
 func worker(height, width int, c chan byte){
+	// fmt.Println(height)
+	// fmt.Println(width)
+
 	Strip := make([][]byte, height)
 	buffStrip := make([][]byte, height)
 
@@ -30,10 +33,11 @@ func worker(height, width int, c chan byte){
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			Strip[y][x] = <-c
+			buffStrip[y][x] = 128
 		}
 	}
 
-	for y := 0; y < height; y++ {
+	for y := 1; y < height - 1; y++ {
 		for x := 0; x < width; x++ {
 			var sum int
 			sum =   int(Strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(Strip[mod((y-1), height)][mod((x), width)]) + int(Strip[mod((y-1), height)][mod((x+1), width)]) +
@@ -54,7 +58,7 @@ func worker(height, width int, c chan byte){
 		}
 	}
 
-	for y := 0; y < height; y++ {
+	for y := 1; y < height - 1; y++ {
 		for x := 0; x < width; x++ {
 			c <- buffStrip[y][x]
 		}
@@ -63,11 +67,11 @@ func worker(height, width int, c chan byte){
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p golParams, d distributorChans, alive chan []cell) {
-
+	//fmt.Println(p.threads)
 	// Create the 2D slice to store the world.
 	world := make([][]byte, p.imageHeight)
 	buffWorld := make([][]byte, p.imageHeight)
-//	var tempWorld [][]byte
+	//var tempWorld [][]byte
 
 	for i := range world {
 		world[i] = make([]byte, p.imageWidth)
@@ -86,6 +90,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 				//fmt.Println("Alive cell at", x, y)
 				world[y][x] = val
 			}
+			buffWorld[y][x] = 128
 		}
 	}
 
@@ -96,10 +101,10 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		//sending data to the workers
 		for i := 0; i < p.threads; i++ {
 			chans[i] = make(chan byte)
-			go worker(p.imageHeight / p.threads, p.imageWidth, chans[i])
-			for y := (p.imageHeight * i) / p.threads; y < (p.imageHeight * (i+1)) / p.threads; y++ {
+			go worker(p.imageHeight / p.threads + 2, p.imageWidth, chans[i])
+			for y := ((p.imageHeight * i) / p.threads) - 1; y < ((p.imageHeight * (i+1)) / p.threads) + 1; y++ {
 				for x := 0; x < p.imageWidth; x++ {
-					chans[i] <- world[y][x]
+					chans[i] <- world[mod(y, p.imageHeight)][x]
 				}
 			}
 		}
@@ -113,12 +118,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 				}
 			}
 		}
-
-
-
-
-
-
+		//fmt.Println("done img")
 		//swaps pointers
 		world, buffWorld = buffWorld, world
 	}
