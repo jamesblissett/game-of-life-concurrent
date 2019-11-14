@@ -86,7 +86,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
 
 
-
+//;josdl
 
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
