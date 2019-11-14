@@ -1,18 +1,34 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"strconv"
 	"strings"
 )
+
+func mod(x int, y int) int {
+	m := x % y
+	if x < 0 && y < 0{
+		m -= y
+	}
+	if x < 0 && y > 0{
+		m += y
+	}
+
+	return m
+}
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p golParams, d distributorChans, alive chan []cell) {
 
 	// Create the 2D slice to store the world.
 	world := make([][]byte, p.imageHeight)
+	buffWorld := make([][]byte, p.imageHeight)
+//	var tempWorld [][]byte
+
 	for i := range world {
 		world[i] = make([]byte, p.imageWidth)
+		buffWorld[i] = make([]byte, p.imageWidth)
 	}
 
 	// Request the io goroutine to read in the image with the given filename.
@@ -24,7 +40,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		for x := 0; x < p.imageWidth; x++ {
 			val := <-d.io.inputVal
 			if val != 0 {
-				fmt.Println("Alive cell at", x, y)
+				//fmt.Println("Alive cell at", x, y)
 				world[y][x] = val
 			}
 		}
@@ -34,10 +50,26 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	for turns := 0; turns < p.turns; turns++ {
 		for y := 0; y < p.imageHeight; y++ {
 			for x := 0; x < p.imageWidth; x++ {
-				// Placeholder for the actual Game of Life logic: flips alive cells to dead and dead cells to alive.
-				world[y][x] = world[y][x] ^ 0xFF
+				var sum int
+				sum =   int(world[mod((y-1) ,p.imageHeight)][mod((x-1) ,p.imageWidth)]) + int(world[mod((y-1), p.imageHeight)][mod((x), p.imageWidth)]) + int(world[mod((y-1), p.imageHeight)][mod((x+1), p.imageWidth)]) +
+							  int(world[mod((y), p.imageHeight)][mod((x-1), p.imageWidth)])	                     +                                int(world[(y) % p.imageHeight][(x+1) % p.imageWidth])   +
+							  int(world[mod((y+1), p.imageHeight)][mod((x-1), p.imageWidth)]) + int(world[(y+1) % p.imageHeight][(x) % p.imageWidth]) + int(world[(y+1) % p.imageHeight][(x+1) % p.imageWidth])
+				sum /= 255
+				if world[y][x] == 255 && sum < 2 {
+					buffWorld[y][x] = 0
+				} else if world[y][x] == 255 && sum > 3 {
+					buffWorld[y][x] = 0
+				} else if world[y][x] == 0 && sum == 3{
+					buffWorld[y][x] = 255
+				} else if world[y][x] == 255 && (sum == 3 || sum == 2){
+					buffWorld[y][x] = world[y][x]
+				} else {
+					buffWorld[y][x] = 0
+				}
 			}
 		}
+		//swaps pointers
+		world, buffWorld = buffWorld, world
 	}
 
 	// Request the io goroutine to output the image with the given filename.
@@ -51,6 +83,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 			d.io.outputVal <- world[y][x]
 		}
 	}
+
+
 
 
 
