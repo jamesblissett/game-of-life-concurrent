@@ -18,6 +18,49 @@ func mod(x int, y int) int {
 	return m
 }
 
+func worker(height, width int, c chan byte){
+	Strip := make([][]byte, height)
+	buffStrip := make([][]byte, height)
+
+	for i := range Strip {
+		Strip[i] = make([]byte, width)
+		buffStrip[i] = make([]byte, width)
+	}
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			Strip[y][x] = <-c
+		}
+	}
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			var sum int
+			sum =   int(Strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(Strip[mod((y-1), height)][mod((x), width)]) + int(Strip[mod((y-1), height)][mod((x+1), width)]) +
+							int(Strip[mod((y), height)][mod((x-1), width)])	                     +                                int(Strip[(y) % height][(x+1) % width])   +
+							int(Strip[mod((y+1), height)][mod((x-1), width)]) + int(Strip[(y+1) % height][(x) % width]) + int(Strip[(y+1) % height][(x+1) % width])
+			sum /= 255
+			if Strip[y][x] == 255 && sum < 2 {
+				buffStrip[y][x] = 0
+			} else if Strip[y][x] == 255 && sum > 3 {
+				buffStrip[y][x] = 0
+			} else if Strip[y][x] == 0 && sum == 3{
+				buffStrip[y][x] = 255
+			} else if Strip[y][x] == 255 && (sum == 3 || sum == 2){
+				buffStrip[y][x] = Strip[y][x]
+			} else {
+				buffStrip[y][x] = 0
+			}
+		}
+	}
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			c <- buffStrip[y][x]
+		}
+	}
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p golParams, d distributorChans, alive chan []cell) {
 
@@ -48,26 +91,34 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
 	// Calculate the new state of Game of Life after the given number of turns.
 	for turns := 0; turns < p.turns; turns++ {
-		for y := 0; y < p.imageHeight; y++ {
-			for x := 0; x < p.imageWidth; x++ {
-				var sum int
-				sum =   int(world[mod((y-1) ,p.imageHeight)][mod((x-1) ,p.imageWidth)]) + int(world[mod((y-1), p.imageHeight)][mod((x), p.imageWidth)]) + int(world[mod((y-1), p.imageHeight)][mod((x+1), p.imageWidth)]) +
-							  int(world[mod((y), p.imageHeight)][mod((x-1), p.imageWidth)])	                     +                                int(world[(y) % p.imageHeight][(x+1) % p.imageWidth])   +
-							  int(world[mod((y+1), p.imageHeight)][mod((x-1), p.imageWidth)]) + int(world[(y+1) % p.imageHeight][(x) % p.imageWidth]) + int(world[(y+1) % p.imageHeight][(x+1) % p.imageWidth])
-				sum /= 255
-				if world[y][x] == 255 && sum < 2 {
-					buffWorld[y][x] = 0
-				} else if world[y][x] == 255 && sum > 3 {
-					buffWorld[y][x] = 0
-				} else if world[y][x] == 0 && sum == 3{
-					buffWorld[y][x] = 255
-				} else if world[y][x] == 255 && (sum == 3 || sum == 2){
-					buffWorld[y][x] = world[y][x]
-				} else {
-					buffWorld[y][x] = 0
+		chans := make([]chan byte, p.threads)
+
+		//sending data to the workers
+		for i := 0; i < p.threads; i++ {
+			chans[i] = make(chan byte)
+			go worker(p.imageHeight / p.threads, p.imageWidth, chans[i])
+			for y := (p.imageHeight * i) / p.threads; y < (p.imageHeight * (i+1)) / p.threads; y++ {
+				for x := 0; x < p.imageWidth; x++ {
+					chans[i] <- world[y][x]
 				}
 			}
 		}
+
+
+		//receiving data from the workers and reconstructing
+		for i := 0; i < p.threads; i++ {
+			for y := (p.imageHeight * i) / p.threads; y < (p.imageHeight * (i+1)) / p.threads; y++ {
+				for x := 0; x < p.imageWidth; x++ {
+					buffWorld[y][x] = <-chans[i]
+				}
+			}
+		}
+
+
+
+
+
+
 		//swaps pointers
 		world, buffWorld = buffWorld, world
 	}
@@ -85,7 +136,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	}
 
 
-	
+
 
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
