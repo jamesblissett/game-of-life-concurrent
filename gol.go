@@ -40,6 +40,20 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		}
 	}
 
+	// Request the io goroutine to output the image with the given filename.
+	d.io.command <- ioOutput
+	d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
+
+
+	// The io goroutine sends the requested image byte by byte, in rows.
+	for y := 0; y < p.imageHeight; y++ {
+		for x := 0; x < p.imageWidth; x++ {
+			d.io.outputVal <- world[y][x]
+		}
+	}
+
+
+
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
 	// Go through the world and append the cells that are still alive.
