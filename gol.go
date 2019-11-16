@@ -165,19 +165,39 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 								paused = false
 							} else if c == "q" {
 								fmt.Println("Pressed Q")
-								qPressed()
+								sPressed(p, d, world, turns)
+								killEverything()
 							}
 						}
 					}
 				}
 			} else if c == "q" {
 				fmt.Println("Pressed Q")
-				qPressed()
+				sPressed(p, d, world, turns)
+				killEverything()
 			}
 
 		default:
 		}
+		if !paused {
+			select {
+			case <-d.timer:
+				// count alive cells
+				var sum int
+				for y := 0; y < p.imageHeight; y++ {
+					for x := 0; x < p.imageWidth; x++ {
+						if world[y][x] == 255 {
+							sum += 1
+						}
+					}
+				}
+				fmt.Printf("There are currently %d cells alive\n", sum)
+			default:
+			}
+		}
 	}
+
+
 
 	// Request the io goroutine to output the image with the given filename.
 	d.io.command <- ioOutput
@@ -225,7 +245,7 @@ func sPressed(p golParams, d distributorChans, world [][]byte, n int) {
 	}
 }
 
-func qPressed() {
+func killEverything() {
 	termbox.Close()
 	os.Exit(0)
 }

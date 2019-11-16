@@ -1,6 +1,9 @@
 package main
 
-import "flag"
+import (
+	"flag"
+	"time"
+)
 
 // golParams provides the details of how to run the Game of Life and which image to load.
 type golParams struct {
@@ -55,6 +58,7 @@ type ioToDistributor struct {
 type distributorChans struct {
 	io distributorToIo
 	key <-chan rune
+	timer <-chan uint8
 }
 
 // ioChans stores all the chans that the io goroutine will use.
@@ -62,11 +66,18 @@ type ioChans struct {
 	distributor ioToDistributor
 }
 
+func timer(timerChan chan uint8) {
+	for {
+		time.Sleep(2 * time.Second)
+		timerChan <- 1
+	}
+}
+
 // gameOfLife is the function called by the testing framework.
 // It makes some channels and starts relevant goroutines.
 // It places the created channels in the relevant structs.
 // It returns an array of alive cells returned by the distributor.
-func gameOfLife(p golParams, keyChan <-chan rune) []cell {
+func gameOfLife(p golParams, keyChan <-chan rune, timerChan <-chan uint8) []cell {
 	var dChans distributorChans
 	var ioChans ioChans
 
@@ -93,6 +104,7 @@ func gameOfLife(p golParams, keyChan <-chan rune) []cell {
 	aliveCells := make(chan []cell)
 
 	dChans.key = keyChan
+	dChans.timer = timerChan
 
 	go distributor(p, dChans, aliveCells)
 	go pgmIo(p, ioChans)
@@ -133,6 +145,9 @@ func main() {
 	keyChan := make(chan rune)
 	go getKeyboardCommand(keyChan)
 
-	gameOfLife(params, keyChan)
+	timerChan := make(chan uint8)
+	go timer(timerChan)
+
+	gameOfLife(params, keyChan, timerChan)
 	StopControlServer()
 }
