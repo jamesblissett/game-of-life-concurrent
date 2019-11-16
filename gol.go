@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -33,7 +33,8 @@ func worker(height, width int, c chan byte){
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			Strip[y][x] = <-c
-			buffStrip[y][x] = 128
+			//testing
+			//buffStrip[y][x] = 128
 		}
 	}
 
@@ -71,7 +72,9 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	// Create the 2D slice to store the world.
 	world := make([][]byte, p.imageHeight)
 	buffWorld := make([][]byte, p.imageHeight)
-	//var tempWorld [][]byte
+
+	paused := false
+
 
 	for i := range world {
 		world[i] = make([]byte, p.imageWidth)
@@ -90,7 +93,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 				//fmt.Println("Alive cell at", x, y)
 				world[y][x] = val
 			}
-			buffWorld[y][x] = 128
+			//testing. Grey if cell not processed
+			//buffWorld[y][x] = 128
 		}
 	}
 
@@ -121,6 +125,33 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		//fmt.Println("done img")
 		//swaps pointers
 		world, buffWorld = buffWorld, world
+
+		for{
+			fmt.Printf("BUSY BUSY BUSY\n")
+			select{
+			case num := <-d.key:
+				chara := string(num)
+				if chara == "s"{
+						fmt.Println("SSSSSSSSSSSSSS")
+				}else if chara == "p"{
+					if paused{
+						fmt.Println("Continuing")
+					} else {
+						fmt.Printf("The current turn is %d\n", turns + 1)
+					}
+					paused = !paused
+
+				}else if chara == "q"{
+						fmt.Println("QQQQQQQQQQQQQQQQQQ")
+				}
+			default:
+				break
+			}
+			if !paused{
+				break
+			}
+	}
+
 	}
 
 	// Request the io goroutine to output the image with the given filename.
