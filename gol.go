@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+
+	"github.com/nsf/termbox-go"
 )
 
 func mod(x int, y int) int {
@@ -126,32 +129,54 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		//swaps pointers
 		world, buffWorld = buffWorld, world
 
-		for{
-			fmt.Printf("BUSY BUSY BUSY\n")
-			select{
-			case num := <-d.key:
-				chara := string(num)
-				if chara == "s"{
-						fmt.Println("SSSSSSSSSSSSSS")
-				}else if chara == "p"{
-					if paused{
-						fmt.Println("Continuing")
-					} else {
-						fmt.Printf("The current turn is %d\n", turns + 1)
+		// kind of bad, but idk
+		// we have to have the second select statement because we need a select
+		// statement without a default case to stop the busy waiting.
+
+		// pressing s prints the current state of the board out to a file
+		// pressing p pauses execution, pressing p again unpauses
+		// pressing q does something.......
+		select {
+		case ascii_value := <-d.key:
+			c := string(ascii_value)
+
+			if c == "s" {
+				fmt.Println("Pressed S")
+				sPressed(p, d, world, turns)
+
+			} else if c == "p" {
+				if paused {
+					fmt.Println("Continuing")
+					paused = false
+				} else {
+					fmt.Printf("The current turn is %d\n", turns + 1)
+					paused = true
+
+					for paused {
+						select {
+						case ascii_value := <-d.key:
+							c := string(ascii_value)
+							if c == "s" {
+								fmt.Println("Pressed S")
+								sPressed(p, d, world, turns)
+
+							} else if c == "p" {
+								fmt.Println("Continuing")
+								paused = false
+							} else if c == "q" {
+								fmt.Println("Pressed Q")
+								qPressed()
+							}
+						}
 					}
-					paused = !paused
-
-				}else if chara == "q"{
-						fmt.Println("QQQQQQQQQQQQQQQQQQ")
 				}
-			default:
-				break
+			} else if c == "q" {
+				fmt.Println("Pressed Q")
+				qPressed()
 			}
-			if !paused{
-				break
-			}
-	}
 
+		default:
+		}
 	}
 
 	// Request the io goroutine to output the image with the given filename.
@@ -186,4 +211,21 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
 	// Return the coordinates of cells that are still alive.
 	alive <- finalAlive
+}
+
+// n is value to append to filename as the turn number
+func sPressed(p golParams, d distributorChans, world [][]byte, n int) {
+	d.io.command <- ioOutput
+	d.io.filename <- strconv.Itoa(p.imageWidth) + "x" + strconv.Itoa(p.imageHeight) + "t" + strconv.Itoa(n)
+
+	for y := 0; y < p.imageHeight; y++ {
+		for x := 0; x < p.imageWidth; x++ {
+			d.io.outputVal <- world[y][x]
+		}
+	}
+}
+
+func qPressed() {
+	termbox.Close()
+	os.Exit(0)
 }
