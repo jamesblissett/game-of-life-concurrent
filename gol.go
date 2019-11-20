@@ -200,16 +200,18 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
 
 	// Request the io goroutine to output the image with the given filename.
-	d.io.command <- ioOutput
-	d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
+    if (!needToStop) {
+        d.io.command <- ioOutput
+        d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
 
 
-	// The io goroutine sends the requested image byte by byte, in rows.
-	for y := 0; y < p.imageHeight; y++ {
-		for x := 0; x < p.imageWidth; x++ {
-			d.io.outputVal <- world[y][x]
-		}
-	}
+        // The io goroutine sends the requested image byte by byte, in rows.
+        for y := 0; y < p.imageHeight; y++ {
+            for x := 0; x < p.imageWidth; x++ {
+                d.io.outputVal <- world[y][x]
+            }
+        }
+    }
 
 
 
