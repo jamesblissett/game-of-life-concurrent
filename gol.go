@@ -77,7 +77,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	buffWorld := make([][]byte, p.imageHeight)
 
 	paused := false
-
+    needToStop := false
 
 	for i := range world {
 		world[i] = make([]byte, p.imageWidth)
@@ -102,7 +102,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 	}
 
 	// Calculate the new state of Game of Life after the given number of turns.
-	for turns := 0; turns < p.turns; turns++ {
+	for turns := 0; turns < p.turns && !needToStop; turns++ {
 		chans := make([]chan byte, p.threads)
 
 		//sending data to the workers
@@ -166,7 +166,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 							} else if c == "q" {
 								fmt.Println("Pressed Q")
 								sPressed(p, d, world, turns)
-								killEverything()
+                                needToStop = true
 							}
 						}
 					}
@@ -174,7 +174,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 			} else if c == "q" {
 				fmt.Println("Pressed Q")
 				sPressed(p, d, world, turns)
-				killEverything()
+                needToStop = true
 			}
 
 		default:
