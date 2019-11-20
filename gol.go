@@ -152,7 +152,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 					fmt.Printf("The current turn is %d\n", turns + 1)
 					paused = true
 
-					for paused {
+					for paused && !needToStop {
 						select {
 						case ascii_value := <-d.key:
 							c := string(ascii_value)
