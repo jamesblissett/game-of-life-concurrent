@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
+	"math"
 	"github.com/nsf/termbox-go"
 )
 
@@ -41,6 +41,7 @@ func worker(height, width int, c chan byte){
 		}
 	}
 
+
 	for y := 1; y < height - 1; y++ {
 		for x := 0; x < width; x++ {
 			var sum int
@@ -71,7 +72,6 @@ func worker(height, width int, c chan byte){
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p golParams, d distributorChans, alive chan []cell) {
-	//fmt.Println(p.threads)
 	// Create the 2D slice to store the world.
 	world := make([][]byte, p.imageHeight)
 	buffWorld := make([][]byte, p.imageHeight)
@@ -108,20 +108,19 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		//sending data to the workers
 		for i := 0; i < p.threads; i++ {
 			chans[i] = make(chan byte)
-			go worker(p.imageHeight / p.threads + 2, p.imageWidth, chans[i])
-			for y := ((p.imageHeight * i) / p.threads) - 1; y < ((p.imageHeight * (i+1)) / p.threads) + 1; y++ {
+			go worker(int((math.Round((float64(p.imageHeight * (i+1)) / float64(p.threads)))) - (math.Round(float64(p.imageHeight * i) / float64(p.threads)))) + 2, p.imageWidth, chans[i])
+			for y := (math.Round(float64(p.imageHeight * i) / float64(p.threads))) - 1; y < math.Round((float64(p.imageHeight * (i+1)) / float64(p.threads))) + 1; y++ {
 				for x := 0; x < p.imageWidth; x++ {
-					chans[i] <- world[mod(y, p.imageHeight)][x]
+					chans[i] <- world[mod(int(y), p.imageHeight)][x]
 				}
 			}
 		}
 
-
 		//receiving data from the workers and reconstructing
 		for i := 0; i < p.threads; i++ {
-			for y := (p.imageHeight * i) / p.threads; y < (p.imageHeight * (i+1)) / p.threads; y++ {
+			for y := math.Round(float64(p.imageHeight * i) / float64(p.threads)); y < math.Round(float64(p.imageHeight * (i+1)) / float64(p.threads)); y++ {
 				for x := 0; x < p.imageWidth; x++ {
-					buffWorld[y][x] = <-chans[i]
+					buffWorld[int(y)][x] = <-chans[i]
 				}
 			}
 		}
@@ -133,7 +132,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		// we have to have the second select statement because we need a select
 		// statement without a default case to stop the busy waiting.
 
-		// pressing s prints the current state of the board out to a file
+		// 	fmt.Println("sending")
+		//pressing s prints the current state of the board out to a file
 		// pressing p pauses execution, pressing p again unpauses
 		// pressing q does something.......
 		select {
