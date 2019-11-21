@@ -6,6 +6,9 @@ import (
 	"math"
 )
 
+// performs x mod y
+// works correctly for negative x
+// eg -1 mod 8 = 7
 func mod(x int, y int) int {
 	m := x % y
 	if x < 0 && y < 0{
@@ -14,14 +17,24 @@ func mod(x int, y int) int {
 	if x < 0 && y > 0{
 		m += y
 	}
-
 	return m
 }
 
+// n - the number assigned to the worker (used for debugging)
+// height - the height of the slice the worker will be sent
+// width - the width of the slice the worker will be sent
+// turns - the number of turns to run the game for
+// disChan - the channel which the cell data is sent to the worker along, and
+//           which the cell data is sent back to the distributor through
+// aboveSend - the channel where the halo for the worker above is sent
+// aboveRec - the channel where the halo from the worker above is received
+// belowSend - the channel where the halo for the worker below is sent
+// belowRec - the channel where the halo from the worker below is received
 func worker(n, height, width, turns int, disChan chan byte,
 			aboveSend chan<- byte, aboveRec <-chan byte,
 			belowSend chan<- byte, belowRec <-chan byte) {
 
+	// allocate two buffers to hold the cells
 	strip := make([][]byte, height)
 	buffStrip := make([][]byte, height)
 
@@ -30,6 +43,7 @@ func worker(n, height, width, turns int, disChan chan byte,
 		buffStrip[i] = make([]byte, width)
 	}
 
+	// receive the cell data from the distributor
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			strip[y][x] = <-disChan
@@ -43,7 +57,6 @@ func worker(n, height, width, turns int, disChan chan byte,
 			aboveSend <- strip[1][haloX]
 			belowSend <- strip[height - 2][haloX]
 		}
-
 
 		// receive halos
 		for haloX := 0; haloX < width; haloX++ {
@@ -59,10 +72,13 @@ func worker(n, height, width, turns int, disChan chan byte,
 				// + . + calculate the number of neighbours
 				// + + +
 				sum = int(strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
-					  int(strip[mod((y), height)][mod((x-1), width)])	                     +                              int(strip[(y) % height][(x+1) % width])           +
+					  int(strip[mod((y), height)][mod((x-1), width)])                        +                              int(strip[(y) % height][(x+1) % width])           +
 					  int(strip[mod((y+1), height)][mod((x-1), width)]) +     int(strip[(y+1) % height][(x) % width])     + int(strip[(y+1) % height][(x+1) % width])
+				// division by 255 because an alive cell is stored as 255 in
+				// the image file
 				sum /= 255
 
+				// game of life logic
 				if strip[y][x] == 255 && sum < 2 {
 					buffStrip[y][x] = 0
 				} else if strip[y][x] == 255 && sum > 3 {
@@ -81,6 +97,8 @@ func worker(n, height, width, turns int, disChan chan byte,
 		strip, buffStrip = buffStrip, strip
 	}
 
+	// send the cell data back to the distributor after all the turns have been
+	// completed
 	for y := 1; y < height - 1; y++ {
 		for x := 0; x < width; x++ {
 			disChan <- strip[y][x]
@@ -90,15 +108,15 @@ func worker(n, height, width, turns int, disChan chan byte,
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p golParams, d distributorChans, alive chan []cell) {
+
 	// Create the 2D slice to store the world.
 	world := make([][]byte, p.imageHeight)
-
-	// paused := false
-    needToStop := false
-
 	for i := range world {
 		world[i] = make([]byte, p.imageWidth)
 	}
+
+	// paused := false
+    needToStop := false
 
 	// Request the io goroutine to read in the image with the given filename.
 	d.io.command <- ioInput
@@ -114,7 +132,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		}
 	}
 
-	// create a ton of channels for the halo exchange
+	// create a channels for the halo exchange
 	disChans := make([]chan byte, p.threads)
 	sendChans := make([]chan<- byte, 2 * p.threads)
 	recChans := make([]<-chan byte, 2 * p.threads)
