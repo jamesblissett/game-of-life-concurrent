@@ -57,7 +57,6 @@ type ioToDistributor struct {
 // distributorChans stores all the chans that the distributor goroutine will use.
 type distributorChans struct {
 	io distributorToIo
-	key <-chan rune
 	timer <-chan uint8
 }
 
@@ -77,7 +76,7 @@ func timer(timerChan chan uint8) {
 // It makes some channels and starts relevant goroutines.
 // It places the created channels in the relevant structs.
 // It returns an array of alive cells returned by the distributor.
-func gameOfLife(p golParams, keyChan <-chan rune, timerChan <-chan uint8) []cell {
+func gameOfLife(p golParams, timerChan <-chan uint8) []cell {
 	var dChans distributorChans
 	var ioChans ioChans
 
@@ -103,7 +102,6 @@ func gameOfLife(p golParams, keyChan <-chan rune, timerChan <-chan uint8) []cell
 
 	aliveCells := make(chan []cell)
 
-	dChans.key = keyChan
 	dChans.timer = timerChan
 
 	go distributor(p, dChans, aliveCells)
@@ -138,16 +136,13 @@ func main() {
 
 	flag.Parse()
 
-	params.turns = 50
+	params.turns = 100000
 
 	startControlServer(params)
-
-	keyChan := make(chan rune)
-	go getKeyboardCommand(keyChan)
 
 	timerChan := make(chan uint8)
 	go timer(timerChan)
 
-	gameOfLife(params, keyChan, timerChan)
+	gameOfLife(params, timerChan)
 	StopControlServer()
 }
