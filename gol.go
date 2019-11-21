@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"math"
-	"github.com/nsf/termbox-go"
 )
 
 func mod(x int, y int) int {
@@ -21,51 +18,72 @@ func mod(x int, y int) int {
 	return m
 }
 
-func worker(height, width int, c chan byte){
-	// fmt.Println(height)
-	// fmt.Println(width)
+func worker(n, height, width, turns int, disChan chan byte,
+			aboveSend chan<- byte, aboveRec <-chan byte,
+			belowSend chan<- byte, belowRec <-chan byte) {
 
-	Strip := make([][]byte, height)
+	strip := make([][]byte, height)
 	buffStrip := make([][]byte, height)
 
-	for i := range Strip {
-		Strip[i] = make([]byte, width)
+	for i := range strip {
+		strip[i] = make([]byte, width)
 		buffStrip[i] = make([]byte, width)
 	}
 
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			Strip[y][x] = <-c
-			//testing
-			//buffStrip[y][x] = 128
+			strip[y][x] = <-disChan
 		}
 	}
 
+	for turn := 0; turn < turns; turn++ {
 
-	for y := 1; y < height - 1; y++ {
-		for x := 0; x < width; x++ {
-			var sum int
-			sum =   int(Strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(Strip[mod((y-1), height)][mod((x), width)]) + int(Strip[mod((y-1), height)][mod((x+1), width)]) +
-							int(Strip[mod((y), height)][mod((x-1), width)])	                     +                                int(Strip[(y) % height][(x+1) % width])   +
-							int(Strip[mod((y+1), height)][mod((x-1), width)]) + int(Strip[(y+1) % height][(x) % width]) + int(Strip[(y+1) % height][(x+1) % width])
-			sum /= 255
-			if Strip[y][x] == 255 && sum < 2 {
-				buffStrip[y][x] = 0
-			} else if Strip[y][x] == 255 && sum > 3 {
-				buffStrip[y][x] = 0
-			} else if Strip[y][x] == 0 && sum == 3{
-				buffStrip[y][x] = 255
-			} else if Strip[y][x] == 255 && (sum == 3 || sum == 2){
-				buffStrip[y][x] = Strip[y][x]
-			} else {
-				buffStrip[y][x] = 0
+		// send halos
+		for haloX := 0; haloX < width; haloX++ {
+			aboveSend <- strip[1][haloX]
+			belowSend <- strip[height - 2][haloX]
+		}
+
+
+		// receive halos
+		for haloX := 0; haloX < width; haloX++ {
+			strip[0][haloX]          = <-aboveRec
+			strip[height - 1][haloX] = <-belowRec
+		}
+
+		for y := 1; y < height - 1; y++ {
+			for x := 0; x < width; x++ {
+
+				var sum int
+				// + + +
+				// + . + calculate the number of neighbours
+				// + + +
+				sum = int(strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
+					  int(strip[mod((y), height)][mod((x-1), width)])	                     +                              int(strip[(y) % height][(x+1) % width])           +
+					  int(strip[mod((y+1), height)][mod((x-1), width)]) +     int(strip[(y+1) % height][(x) % width])     + int(strip[(y+1) % height][(x+1) % width])
+				sum /= 255
+
+				if strip[y][x] == 255 && sum < 2 {
+					buffStrip[y][x] = 0
+				} else if strip[y][x] == 255 && sum > 3 {
+					buffStrip[y][x] = 0
+				} else if strip[y][x] == 0 && sum == 3 {
+					buffStrip[y][x] = 255
+				} else if strip[y][x] == 255 && (sum == 3 || sum == 2) {
+					buffStrip[y][x] = strip[y][x]
+				} else {
+					buffStrip[y][x] = 0
+				}
 			}
 		}
+
+		// swap the pointers
+		strip, buffStrip = buffStrip, strip
 	}
 
 	for y := 1; y < height - 1; y++ {
 		for x := 0; x < width; x++ {
-			c <- buffStrip[y][x]
+			disChan <- strip[y][x]
 		}
 	}
 }
@@ -74,14 +92,12 @@ func worker(height, width int, c chan byte){
 func distributor(p golParams, d distributorChans, alive chan []cell) {
 	// Create the 2D slice to store the world.
 	world := make([][]byte, p.imageHeight)
-	buffWorld := make([][]byte, p.imageHeight)
 
-	paused := false
+	// paused := false
     needToStop := false
 
 	for i := range world {
 		world[i] = make([]byte, p.imageWidth)
-		buffWorld[i] = make([]byte, p.imageWidth)
 	}
 
 	// Request the io goroutine to read in the image with the given filename.
@@ -93,111 +109,126 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 		for x := 0; x < p.imageWidth; x++ {
 			val := <-d.io.inputVal
 			if val != 0 {
-				//fmt.Println("Alive cell at", x, y)
 				world[y][x] = val
 			}
-			//testing. Grey if cell not processed
-			//buffWorld[y][x] = 128
 		}
 	}
 
-	// Calculate the new state of Game of Life after the given number of turns.
-	for turns := 0; turns < p.turns && !needToStop; turns++ {
-		chans := make([]chan byte, p.threads)
+	// create a ton of channels for the halo exchange
+	disChans := make([]chan byte, p.threads)
+	sendChans := make([]chan<- byte, 2 * p.threads)
+	recChans := make([]<-chan byte, 2 * p.threads)
 
-		//sending data to the workers
-		for i := 0; i < p.threads; i++ {
-			chans[i] = make(chan byte)
-			go worker(int((math.Round((float64(p.imageHeight * (i+1)) / float64(p.threads)))) - (math.Round(float64(p.imageHeight * i) / float64(p.threads)))) + 2, p.imageWidth, chans[i])
-			for y := (math.Round(float64(p.imageHeight * i) / float64(p.threads))) - 1; y < math.Round((float64(p.imageHeight * (i+1)) / float64(p.threads))) + 1; y++ {
-				for x := 0; x < p.imageWidth; x++ {
-					chans[i] <- world[mod(int(y), p.imageHeight)][x]
-				}
-			}
-		}
+	for i := 0; i < 2 * p.threads; i++ {
+		c := make(chan byte, p.imageWidth)
+		sendChans[i] = c
+		recChans[i] = c
+	}
 
-		//receiving data from the workers and reconstructing
-		for i := 0; i < p.threads; i++ {
-			for y := math.Round(float64(p.imageHeight * i) / float64(p.threads)); y < math.Round(float64(p.imageHeight * (i+1)) / float64(p.threads)); y++ {
-				for x := 0; x < p.imageWidth; x++ {
-					buffWorld[int(y)][x] = <-chans[i]
-				}
-			}
-		}
-		//fmt.Println("done img")
-		//swaps pointers
-		world, buffWorld = buffWorld, world
+	//sending data to the workers
+	for i := 0; i < p.threads; i++ {
+		disChans[i] = make(chan byte)
 
-		// kind of bad, but idk
-		// we have to have the second select statement because we need a select
-		// statement without a default case to stop the busy waiting.
+		lowerBound := int(math.Round(float64(p.imageHeight * i) / float64(p.threads)))
+		upperBound := int(math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads))))
 
-		// 	fmt.Println("sending")
-		//pressing s prints the current state of the board out to a file
-		// pressing p pauses execution, pressing p again unpauses
-		// pressing q does something.......
-		select {
-		case ascii_value := <-d.key:
-			c := string(ascii_value)
+		go worker(i, int(upperBound - lowerBound) + 2, p.imageWidth, p.turns, disChans[i],
+			      // aboveSend      // aboveRec
+				  sendChans[i * 2], recChans[mod((i * 2) - 1, 2 * p.threads)],
+				  // belowSend      // belowRec
+				  sendChans[(i * 2) + 1], recChans[mod((i + 1) * 2, 2 * p.threads)])
 
-			if c == "s" {
-				fmt.Println("Pressed S")
-				sPressed(p, d, world, turns)
-
-			} else if c == "p" {
-				if paused {
-					fmt.Println("Continuing")
-					paused = false
-				} else {
-					fmt.Printf("The current turn is %d\n", turns + 1)
-					paused = true
-
-					for paused && !needToStop {
-						select {
-						case ascii_value := <-d.key:
-							c := string(ascii_value)
-							if c == "s" {
-								fmt.Println("Pressed S")
-								sPressed(p, d, world, turns)
-
-							} else if c == "p" {
-								fmt.Println("Continuing")
-								paused = false
-							} else if c == "q" {
-								fmt.Println("Pressed Q")
-								sPressed(p, d, world, turns)
-                                needToStop = true
-							}
-						}
-					}
-				}
-			} else if c == "q" {
-				fmt.Println("Pressed Q")
-				sPressed(p, d, world, turns)
-                needToStop = true
-			}
-
-		default:
-		}
-		if !paused {
-			select {
-			case <-d.timer:
-				// count alive cells
-				var sum int
-				for y := 0; y < p.imageHeight; y++ {
-					for x := 0; x < p.imageWidth; x++ {
-						if world[y][x] == 255 {
-							sum += 1
-						}
-					}
-				}
-				fmt.Printf("There are currently %d cells alive\n", sum)
-			default:
+		for y := lowerBound - 1; y < upperBound + 1; y++ {
+			for x := 0; x < p.imageWidth; x++ {
+				disChans[i] <- world[mod(y, p.imageHeight)][x]
 			}
 		}
 	}
 
+	// the magic happens
+	// it actually does
 
+	//receiving data from the workers and reconstructing
+	for i := 0; i < p.threads; i++ {
+
+		lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
+		upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
+
+		for y := lowerBound; y < upperBound; y++ {
+			for x := 0; x < p.imageWidth; x++ {
+				world[int(y)][x] = <-disChans[i]
+			}
+		}
+	}
+
+	// kind of bad, but idk
+	// we have to have the second select statement because we need a select
+	// statement without a default case to stop the busy waiting.
+
+	// 	fmt.Println("sending")
+	//pressing s prints the current state of the board out to a file
+	// pressing p pauses execution, pressing p again unpauses
+	// pressing q does something.......
+	// select {
+	// case ascii_value := <-d.key:
+	// 	c := string(ascii_value)
+
+	// 	if c == "s" {
+	// 		fmt.Println("Pressed S")
+	// 		sPressed(p, d, world, turns)
+
+	// 	} else if c == "p" {
+	// 		if paused {
+	// 			fmt.Println("Continuing")
+	// 			paused = false
+	// 		} else {
+	// 			fmt.Printf("The current turn is %d\n", turns + 1)
+	// 			paused = true
+
+	// 			for paused && !needToStop {
+	// 				select {
+	// 				case ascii_value := <-d.key:
+	// 					c := string(ascii_value)
+	// 					if c == "s" {
+	// 						fmt.Println("Pressed S")
+	// 						sPressed(p, d, world, turns)
+
+	// 					} else if c == "p" {
+	// 						fmt.Println("Continuing")
+	// 						paused = false
+	// 					} else if c == "q" {
+	// 						fmt.Println("Pressed Q")
+	// 						sPressed(p, d, world, turns)
+	// 						needToStop = true
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	} else if c == "q" {
+	// 		fmt.Println("Pressed Q")
+	// 		sPressed(p, d, world, turns)
+	// 		needToStop = true
+	// 	}
+
+	// default:
+	// }
+
+	// if !paused {
+	// 	select {
+	// 	case <-d.timer:
+	// 		// count alive cells
+	// 		var sum int
+	// 		for y := 0; y < p.imageHeight; y++ {
+	// 			for x := 0; x < p.imageWidth; x++ {
+	// 				if world[y][x] == 255 {
+	// 					sum += 1
+	// 				}
+	// 			}
+	// 		}
+	// 		fmt.Printf("There are currently %d cells alive\n", sum)
+	// 	default:
+	// 	}
+	// }
 
 	// Request the io goroutine to output the image with the given filename.
     if (!needToStop) {
@@ -212,9 +243,6 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
             }
         }
     }
-
-
-
 
 	// Create an empty slice to store coordinates of cells that are still alive after p.turns are done.
 	var finalAlive []cell
@@ -245,9 +273,4 @@ func sPressed(p golParams, d distributorChans, world [][]byte, n int) {
 			d.io.outputVal <- world[y][x]
 		}
 	}
-}
-
-func killEverything() {
-	termbox.Close()
-	os.Exit(0)
 }
