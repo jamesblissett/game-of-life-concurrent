@@ -7,19 +7,23 @@ import (
 
 // getKeyboardCommand sends all keys pressed on the keyboard as runes (characters) on the key chan.
 // getKeyboardCommand will NOT work if termbox isn't initialised (in startControlServer)
-func getKeyboardCommand(keyChans []chan string) {
+func getKeyboardCommand(keyChans []chan string, keyAvailable *bool) {
     for {
         event := termbox.PollEvent()
         if event.Type == termbox.EventKey {
-			fmt.Println("yass")
             if event.Key != 0 {
-				for _, keyChan := range keyChans {
-					keyChan <- string(rune(event.Key))
-				}
+              *keyAvailable = true
+      				for _, keyChan := range keyChans {
+      					keyChan <- string(rune(event.Key))
+      				}
+              *keyAvailable = false
             } else if event.Ch != 0 {
-				for _, keyChan := range keyChans {
-					keyChan <- string(event.Ch)
-				}
+              *keyAvailable = true
+      				for i, keyChan := range keyChans {
+                fmt.Println(i)
+      					keyChan <- string(event.Ch)
+      				}
+              *keyAvailable = false
             }
         }
     }

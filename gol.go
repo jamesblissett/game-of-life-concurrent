@@ -36,7 +36,7 @@ func mod(x int, y int) int {
 // height - the height of the slice the worker will be sent
 // width - the width of the slice the worker will be sent
 // turns - the number of turns to run the game for
-func worker(n, height, width, turns int, wc workerChans) {
+func worker(n, height, width, turns int, wc workerChans, keyAvailable *bool) {
 
     // allocate two buffers to hold the cells
     strip := make([][]byte, height)
@@ -56,12 +56,52 @@ func worker(n, height, width, turns int, wc workerChans) {
 
     paused := false
     for turn := 0; turn < turns; turn++ {
+      fmt.Printf("The current turn is %d, %d\n", turn, n)
+
+        if n == 0 {
+          fmt.Println(turn)
+        }
 
         // send halos
         for haloX := 0; haloX < width; haloX++ {
             wc.aboveSend <- strip[1][haloX]
             wc.belowSend <- strip[height - 2][haloX]
         }
+
+        if *keyAvailable{
+          fmt.Printf("work %d\n", n)
+          c := <-wc.keyRec
+          if c == "p" {
+              if paused {
+                  paused = false
+                  fmt.Println("Continuing not")
+              } else {
+                paused = true
+                fmt.Printf("The paused turn is %d, %d\n", turn, n)
+
+                for paused {
+                      select {
+                      case c := <-wc.keyRec:
+                          if c == "s" {
+                              fmt.Println("Pressed S")
+                          }else if c == "p" {
+                              fmt.Println("Continuing")
+                              paused = false
+                          } else if c == "q" {
+                              fmt.Println("Pressed Q")
+                          }
+                      }
+                  }
+                }
+          } else if c == "s" {
+              fmt.Println("Pressed S")
+          } else if c == "q" {
+              fmt.Println("Pressed Q")
+          }
+        }
+
+
+
 
         // receive halos
         for haloX := 0; haloX < width; haloX++ {
@@ -101,40 +141,6 @@ func worker(n, height, width, turns int, wc workerChans) {
 
         // swap the pointers
         strip, buffStrip = buffStrip, strip
-
-        select {
-        case c := <-wc.keyRec:
-            if c == "p" {
-                if paused {
-                    paused = false
-                    fmt.Println("Continuing")
-                } else {
-                    paused = true
-                    fmt.Printf("The current turn is %d\n", turn + 1)
-
-                    for paused {
-                        select {
-                        case c := <-wc.keyRec:
-                            if c == "s" {
-                                fmt.Println("Pressed S")
-
-                            } else if c == "p" {
-                                fmt.Println("Continuing")
-                                paused = false
-
-                            } else if c == "q" {
-                                fmt.Println("Pressed Q")
-                            }
-                        }
-                    }
-                }
-            } else if c == "s" {
-                fmt.Println("Pressed S")
-            } else if c == "q" {
-                fmt.Println("Pressed Q")
-            }
-        default:
-        }
     }
 
     // send the cell data back to the distributor after all the turns have been
@@ -176,12 +182,13 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     keyChans := make([]chan string, p.threads)
 
     for i := 0; i < 2 * p.threads; i++ {
-        c := make(chan byte, p.imageWidth)
+        c := make(chan byte, 2 * p.imageWidth)        //double so pause works, allows 2 halo's to be sent, so doesn't dead lock
         sendChans[i] = c
         recChans[i] = c
     }
 
-    go getKeyboardCommand(keyChans)
+    keyAvailable := false
+    go getKeyboardCommand(keyChans, &keyAvailable)
 
     //sending data to the workers
     for i := 0; i < p.threads; i++ {
@@ -202,7 +209,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         wc.belowRec = recChans[mod((i + 1) * 2, 2 * p.threads)]
         wc.keyRec = keyChans[i]
 
-        go worker(i, int(upperBound - lowerBound) + 2, p.imageWidth, p.turns, wc)
+        go worker(i, int(upperBound - lowerBound) + 2, p.imageWidth, p.turns, wc, &keyAvailable)
 
         for y := lowerBound - 1; y < upperBound + 1; y++ {
             for x := 0; x < p.imageWidth; x++ {
