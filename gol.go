@@ -15,7 +15,7 @@ type workerChans struct {
     aboveRec <-chan byte  // aboveRec - the channel where the halo from the worker above is received
     belowSend chan<- byte // belowSend - the channel where the halo for the worker below is sent
     belowRec <-chan byte  // belowRec - the channel where the halo from the worker below is received
-    keyRec <-chan string  // keyRec - receives the user's keypress
+    outSlice <-chan bool  // to tell the worker to output its slice
 }
 
 // performs x mod y
@@ -36,7 +36,7 @@ func mod(x int, y int) int {
 // height - the height of the slice the worker will be sent
 // width - the width of the slice the worker will be sent
 // turns - the number of turns to run the game for
-func worker(n, height, width, turns int, wc workerChans, keyAvailable *bool) {
+func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
 
     // allocate two buffers to hold the cells
     strip := make([][]byte, height)
@@ -54,93 +54,76 @@ func worker(n, height, width, turns int, wc workerChans, keyAvailable *bool) {
         }
     }
 
-    paused := false
+    cond := true
     for turn := 0; turn < turns; turn++ {
       fmt.Printf("The current turn is %d, %d\n", turn, n)
 
-        if n == 0 {
-          fmt.Println(turn)
-        }
-
-        // send halos
-        for haloX := 0; haloX < width; haloX++ {
-            wc.aboveSend <- strip[1][haloX]
-            wc.belowSend <- strip[height - 2][haloX]
-        }
-
-        if *keyAvailable{
-          fmt.Printf("work %d\n", n)
-          c := <-wc.keyRec
-          if c == "p" {
-              if paused {
-                  paused = false
-                  fmt.Println("Continuing not")
-              } else {
-                paused = true
-                fmt.Printf("The paused turn is %d, %d\n", turn, n)
-
-                for paused {
-                      select {
-                      case c := <-wc.keyRec:
-                          if c == "s" {
-                              fmt.Println("Pressed S")
-                          }else if c == "p" {
-                              fmt.Println("Continuing")
-                              paused = false
-                          } else if c == "q" {
-                              fmt.Println("Pressed Q")
-                          }
-                      }
-                  }
-                }
-          } else if c == "s" {
-              fmt.Println("Pressed S")
-          } else if c == "q" {
-              fmt.Println("Pressed Q")
+      cond = true
+      for cond{
+        select{
+        case _ = <-wc.outSlice:
+          // send the cell data back to the distributor after all the turns have been
+          // completed
+          for y := 1; y < height - 1; y++ {
+              for x := 0; x < width; x++ {
+                  wc.disChan <- strip[y][x]
+              }
           }
+        case _ = <-tickChan:
+          cond = false
         }
+      }
 
 
+      if n == 0 {
+        fmt.Println(turn)
+      }
+
+      // send halos
+      for haloX := 0; haloX < width; haloX++ {
+          wc.aboveSend <- strip[1][haloX]
+          wc.belowSend <- strip[height - 2][haloX]
+      }
 
 
-        // receive halos
-        for haloX := 0; haloX < width; haloX++ {
-            strip[0][haloX]          = <-wc.aboveRec
-            strip[height - 1][haloX] = <-wc.belowRec
-        }
+      // receive halos
+      for haloX := 0; haloX < width; haloX++ {
+          strip[0][haloX]          = <-wc.aboveRec
+          strip[height - 1][haloX] = <-wc.belowRec
+      }
 
-        // for each cell (excluding the halo rows)
-        for y := 1; y < height - 1; y++ {
-            for x := 0; x < width; x++ {
+      // for each cell (excluding the halo rows)
+      for y := 1; y < height - 1; y++ {
+          for x := 0; x < width; x++ {
 
-                var sum int
-                // + + +
-                // + . + calculate the number of neighbours
-                // + + +
-                sum = int(strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
-                      int(strip[mod((y), height)][mod((x-1), width)])                        +                              int(strip[(y) % height][(x+1) % width])           +
-                      int(strip[mod((y+1), height)][mod((x-1), width)]) +     int(strip[(y+1) % height][(x) % width])     + int(strip[(y+1) % height][(x+1) % width])
-                // division by 255 because an alive cell is stored as 255 in
-                // the image file
-                sum /= 255
+              var sum int
+              // + + +
+              // + . + calculate the number of neighbours
+              // + + +
+              sum = int(strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
+                    int(strip[mod((y), height)][mod((x-1), width)])                        +                              int(strip[(y) % height][(x+1) % width])           +
+                    int(strip[mod((y+1), height)][mod((x-1), width)]) +     int(strip[(y+1) % height][(x) % width])     + int(strip[(y+1) % height][(x+1) % width])
+              // division by 255 because an alive cell is stored as 255 in
+              // the image file
+              sum /= 255
 
-                // game of life logic
-                if strip[y][x] == 255 && sum < 2 {
-                    buffStrip[y][x] = 0
-                } else if strip[y][x] == 255 && sum > 3 {
-                    buffStrip[y][x] = 0
-                } else if strip[y][x] == 0 && sum == 3 {
-                    buffStrip[y][x] = 255
-                } else if strip[y][x] == 255 && (sum == 3 || sum == 2) {
-                    buffStrip[y][x] = strip[y][x]
-                } else {
-                    buffStrip[y][x] = 0
-                }
-            }
-        }
+              // game of life logic
+              if strip[y][x] == 255 && sum < 2 {
+                  buffStrip[y][x] = 0
+              } else if strip[y][x] == 255 && sum > 3 {
+                  buffStrip[y][x] = 0
+              } else if strip[y][x] == 0 && sum == 3 {
+                  buffStrip[y][x] = 255
+              } else if strip[y][x] == 255 && (sum == 3 || sum == 2) {
+                  buffStrip[y][x] = strip[y][x]
+              } else {
+                  buffStrip[y][x] = 0
+              }
+          }
+      }
 
-        // swap the pointers
-        strip, buffStrip = buffStrip, strip
+      // swap the pointers
+      strip, buffStrip = buffStrip, strip
     }
 
     // send the cell data back to the distributor after all the turns have been
@@ -179,7 +162,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     disChans := make([]chan byte, p.threads)
     sendChans := make([]chan<- byte, 2 * p.threads)
     recChans := make([]<-chan byte, 2 * p.threads)
-    keyChans := make([]chan string, p.threads)
+    tickChans := make([]chan bool, p.threads)
+    outSliceChans := make([]chan bool, p.threads)
 
     for i := 0; i < 2 * p.threads; i++ {
         c := make(chan byte, 2 * p.imageWidth)        //double so pause works, allows 2 halo's to be sent, so doesn't dead lock
@@ -187,15 +171,14 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         recChans[i] = c
     }
 
-    keyAvailable := false
-    go getKeyboardCommand(keyChans, &keyAvailable)
+    keyChan := make(chan string)
+    go getKeyboardCommand(keyChan)
 
     //sending data to the workers
     for i := 0; i < p.threads; i++ {
         disChans[i] = make(chan byte)
-
-        k := make(chan string)
-        keyChans[i] = k
+        tickChans[i] = make(chan bool)
+        outSliceChans[i] = make(chan bool)
 
         lowerBound := int(math.Round(float64(p.imageHeight * i) / float64(p.threads)))
         upperBound := int(math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads))))
@@ -207,9 +190,9 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         wc.aboveRec = recChans[mod((i * 2) - 1, 2 * p.threads)]
         wc.belowSend = sendChans[(i * 2) + 1]
         wc.belowRec = recChans[mod((i + 1) * 2, 2 * p.threads)]
-        wc.keyRec = keyChans[i]
+        wc.outSlice = outSliceChans[i]
 
-        go worker(i, int(upperBound - lowerBound) + 2, p.imageWidth, p.turns, wc, &keyAvailable)
+        go worker(i, int(upperBound - lowerBound) + 2, p.imageWidth, p.turns, wc, tickChans[i])
 
         for y := lowerBound - 1; y < upperBound + 1; y++ {
             for x := 0; x < p.imageWidth; x++ {
@@ -217,6 +200,114 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
             }
         }
     }
+
+    paused := false
+    quit := false
+    for n := 0; n < p.turns && !quit; n++{
+      select{
+      case c := <-keyChan:
+        if c == "p"{
+          if paused{
+            paused = false
+            fmt.Println("Continuing")
+          }else{
+            fmt.Printf("Paused %d\n", n)
+            paused = true
+            for paused && !quit{
+              select{
+              case k := <-keyChan:
+                if k == "p"{
+                  paused = false
+                  fmt.Println("Continuing")
+                }else if k == "s"{
+                  for _, outSliceChan := range outSliceChans{
+                    outSliceChan <- true
+                  }
+
+                  //recombine
+                  for i := 0; i < p.threads; i++ {
+
+                      lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
+                      upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
+
+                      for y := lowerBound; y < upperBound; y++ {
+                          for x := 0; x < p.imageWidth; x++ {
+                              world[int(y)][x] = <-disChans[i]
+                          }
+                      }
+                  }
+
+                  d.io.command <- ioOutput
+                  d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
+
+                  // The io goroutine sends the requested image byte by byte, in rows.
+                  for y := 0; y < p.imageHeight; y++ {
+                      for x := 0; x < p.imageWidth; x++ {
+                          d.io.outputVal <- world[y][x]
+                      }
+                  }
+
+
+                }else if k == "q"{
+                  fmt.Println("q")
+                  quit = true
+                  for _, outSliceChan := range outSliceChans{
+                    outSliceChan <- true
+                  }
+                }
+              }
+            }
+          }
+        }else if c == "s" {
+          for _, outSliceChan := range outSliceChans{
+            outSliceChan <- true
+          }
+
+          //recombine
+          for i := 0; i < p.threads; i++ {
+
+              lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
+              upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
+
+              for y := lowerBound; y < upperBound; y++ {
+                  for x := 0; x < p.imageWidth; x++ {
+                      world[int(y)][x] = <-disChans[i]
+                  }
+              }
+          }
+
+          d.io.command <- ioOutput
+          d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
+
+          // The io goroutine sends the requested image byte by byte, in rows.
+          for y := 0; y < p.imageHeight; y++ {
+              for x := 0; x < p.imageWidth; x++ {
+                  d.io.outputVal <- world[y][x]
+              }
+          }
+        } else if c == "q" {
+          fmt.Println("q outer")
+
+          quit = true
+
+          for _, outSliceChan := range outSliceChans{
+            outSliceChan <- true
+          }
+        }
+      default:
+      }
+
+
+
+
+
+      for j := 0; j < p.threads && !quit; j++{
+        tickChans[j] <- true
+      }
+    }
+
+
+
 
     // the magic happens
     // it actually does
