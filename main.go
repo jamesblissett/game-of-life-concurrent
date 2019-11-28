@@ -136,7 +136,7 @@ func main() {
 
 	flag.Parse()
 
-	params.turns = 100
+	params.turns = 1000
 
 	startControlServer(params)
 

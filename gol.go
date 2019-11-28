@@ -5,6 +5,7 @@ import (
     "strconv"
     "strings"
     "math"
+    "time"
 )
 
 type workerChans struct {
@@ -56,7 +57,7 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
 
     cond := true
     for turn := 0; turn < turns; turn++ {
-      fmt.Printf("The current turn is %d, %d\n", turn, n)
+      //fmt.Printf("The current turn is %d, %d\n", turn, n)
 
       cond = true
       for cond{
@@ -72,11 +73,6 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
         case _ = <-tickChan:
           cond = false
         }
-      }
-
-
-      if n == 0 {
-        fmt.Println(turn)
       }
 
       // send halos
@@ -173,6 +169,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
     keyChan := make(chan string)
     go getKeyboardCommand(keyChan)
+    t := time.NewTicker(time.Second * 2)
+
 
     //sending data to the workers
     for i := 0; i < p.threads; i++ {
@@ -205,6 +203,26 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     quit := false
     for n := 0; n < p.turns && !quit; n++{
       select{
+      case <- t.C:
+        for _, outSliceChan := range outSliceChans{
+          outSliceChan <- true
+        }
+
+        sum := 0
+
+        for i := 0; i < p.threads; i++ {
+
+            lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
+            upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
+
+            for y := lowerBound; y < upperBound; y++ {
+                for x := 0; x < p.imageWidth; x++ {
+                    sum += int(<-disChans[i])
+                }
+            }
+        }
+        sum /= 255
+        fmt.Printf("The number of alive cells are - %d\n", sum)
       case c := <-keyChan:
         if c == "p"{
           if paused{
