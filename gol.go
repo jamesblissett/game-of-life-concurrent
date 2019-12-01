@@ -56,11 +56,6 @@ func worker(n, height, width, turns int, wc workerChans, keyAvailable *bool) {
 
     paused := false
     for turn := 0; turn < turns; turn++ {
-      fmt.Printf("The current turn is %d, %d\n", turn, n)
-
-        if n == 0 {
-          fmt.Println(turn)
-        }
 
         // send halos
         for haloX := 0; haloX < width; haloX++ {
@@ -69,7 +64,6 @@ func worker(n, height, width, turns int, wc workerChans, keyAvailable *bool) {
         }
 
         if *keyAvailable{
-          fmt.Printf("work %d\n", n)
           c := <-wc.keyRec
           if c == "p" {
               if paused {
