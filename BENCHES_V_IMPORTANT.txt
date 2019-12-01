@@ -1,0 +1,61 @@
+Benchmarks
+==========
+
+results of `make bench` on lab machine it075638
+-----------------------------------------------
+
+master branch - serial implementation
+1  - 65.434
+2  - 64.202
+3  - 65.357
+4  - 66.335
+5  - 64.963
+6  - 64.212
+7  - 64.963
+8  - 64.875
+9  - 64.157
+10 - 63.562
+Average - 64.806
+Standard Deviation - 0.801
+
+divide-and-conquer branch - shit parallel implementation
+1  - 309.400
+2  - 313.673
+3  - 309.890
+4  - 311.517
+5  - 314.219
+6  - 309.387
+7  - 308.125
+8  - 307.220
+9  - 308.729
+10 - 312.442
+Average - 310.460
+Standard Deviation - 2.382
+
+halo branch - async no tick halo exchange
+1  - 36.494
+2  - 35.145
+3  - 36.784
+4  - 34.562
+5  - 36.260
+6  - 35.082
+7  - 38.303
+8  - 35.460
+9  - 37.464
+10 - 34.728
+Average - 36.028
+Standard Deviation - 1.243
+
+stage4SyncVBAD branch - sync tick halo exchange
+1  - 35.474
+2  - 33.438
+3  - 36.536
+4  - 35.441
+5  - 37.056
+6  - 33.896
+7  - 37.239
+8  - 35.578
+9  - 38.643
+10 - 35.385
+Average - 35.869
+Standard Deviation - 1.559
