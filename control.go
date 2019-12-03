@@ -12,9 +12,9 @@ func getKeyboardCommand(keyChan chan string) {
         event := termbox.PollEvent()
         if event.Type == termbox.EventKey {
             if event.Key != 0 {
-      				keyChan <- string(rune(event.Key))
+                keyChan <- string(rune(event.Key))
             } else if event.Ch != 0 {
-      				keyChan <- string(event.Ch)
+                keyChan <- string(event.Ch)
             }
         }
     }

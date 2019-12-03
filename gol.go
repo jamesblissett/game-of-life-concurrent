@@ -9,12 +9,13 @@ import (
 )
 
 type workerChans struct {
-    disChan chan byte // disChan - the channel which the cell data is sent to the worker along, and
-    //           which the cell data is sent back to the distributor through
+    disChan chan byte     // disChan - the channel which the cell data is sent to the worker along, and
+                          // which the cell data is sent back to the distributor through
     aboveSend chan<- byte // aboveSend - the channel where the halo for the worker above is sent
     aboveRec  <-chan byte // aboveRec - the channel where the halo from the worker above is received
     belowSend chan<- byte // belowSend - the channel where the halo for the worker below is sent
     belowRec  <-chan byte // belowRec - the channel where the halo from the worker below is received
+
     outSlice  <-chan bool // to tell the worker to output its slice
 }
 
@@ -61,15 +62,15 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
         cond = true
         for cond {
             select {
-            case _ = <-wc.outSlice:
+            case <-wc.outSlice:
                 // send the cell data back to the distributor after all the turns have been
                 // completed
-                for y := 1; y < height-1; y++ {
+                for y := 1; y < height - 1; y++ {
                     for x := 0; x < width; x++ {
                         wc.disChan <- strip[y][x]
                     }
                 }
-            case _ = <-tickChan:
+            case <-tickChan:
                 cond = false
             }
         }
@@ -95,8 +96,8 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
                 // + . + calculate the number of neighbours
                 // + + +
                 sum = int(strip[mod((y-1), height)][mod((x-1), width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
-                      int(strip[mod((y), height)][mod((x-1), width)])   + int(strip[(y)%height][(x+1)%width]) +
-                      int(strip[mod((y+1), height)][mod((x-1), width)]) + int(strip[(y+1)%height][(x)%width]) + int(strip[(y+1)%height][(x+1)%width])
+                      int(strip[mod((y), height)][mod((x-1), width)])                        +                              int(strip[(y)%height][(x+1)%width]) +
+                      int(strip[mod((y+1), height)][mod((x-1), width)]) + int(strip[(y+1)%height][(x)%width])             + int(strip[(y+1)%height][(x+1)%width])
                 // division by 255 because an alive cell is stored as 255 in the image file
                 sum /= 255
 
@@ -152,8 +153,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     }
 
     // create all the channels for the halo exchange
-    sendChans := make([]chan<- byte, 2*p.threads)
-    recChans := make([]<-chan byte, 2*p.threads)
+    sendChans := make([]chan<- byte, 2 * p.threads)
+    recChans := make([]<-chan byte, 2 * p.threads)
 
     // these channels are for sending and receiving the bytes to and from the workers
     disChans := make([]chan byte, p.threads)
@@ -164,8 +165,9 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     // these channels are for telling the workers to output their current data
     outSliceChans := make([]chan bool, p.threads)
 
-    for i := 0; i < 2*p.threads; i++ {
-        c := make(chan byte, 2*p.imageWidth) //double so pause works, allows 2 halo's to be sent, so doesn't dead lock
+    for i := 0; i < 2 * p.threads; i++ {
+        // double so pause works, allows 2 halo's to be sent, so doesn't dead lock
+        c := make(chan byte, 2*p.imageWidth)
         sendChans[i] = c
         recChans[i] = c
     }
@@ -186,15 +188,15 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         // assign the correct channels to the worker
         var wc workerChans
         wc.disChan = disChans[i]
-        wc.aboveSend = sendChans[i*2]
-        wc.aboveRec = recChans[mod((i*2)-1, 2*p.threads)]
-        wc.belowSend = sendChans[(i*2)+1]
-        wc.belowRec = recChans[mod((i+1)*2, 2*p.threads)]
+        wc.aboveSend = sendChans[i * 2]
+        wc.aboveRec = recChans[mod((i * 2) - 1, 2 * p.threads)]
+        wc.belowSend = sendChans[(i * 2) + 1]
+        wc.belowRec = recChans[mod((i + 1) * 2, 2 * p.threads)]
         wc.outSlice = outSliceChans[i]
 
-        go worker(i, int(upperBound-lowerBound)+2, p.imageWidth, p.turns, wc, tickChans[i])
+        go worker(i, int(upperBound-lowerBound) + 2, p.imageWidth, p.turns, wc, tickChans[i])
 
-        for y := lowerBound - 1; y < upperBound+1; y++ {
+        for y := lowerBound - 1; y < upperBound + 1; y++ {
             for x := 0; x < p.imageWidth; x++ {
                 disChans[i] <- world[mod(y, p.imageHeight)][x]
             }
@@ -207,15 +209,15 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         select {
         // this case is run every 2 seconds to print out the number of alive cells
         case <-t.C:
-            
+
             requestDataFromWorkers(outSliceChans)
 
             // sum up the number of alive cells in the world
             sum := 0
             for i := 0; i < p.threads; i++ {
 
-                lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
-                upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
+                lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
+                upperBound := math.Round((float64(p.imageHeight*(i + 1)) / float64(p.threads)))
 
                 for y := lowerBound; y < upperBound; y++ {
                     for x := 0; x < p.imageWidth; x++ {
@@ -234,11 +236,11 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
                 // this code should never run
                 if paused {
                     paused = false
-                    fmt.Println("Continuing")
+                    fmt.Println("Continuing...")
 
                 // called when we are not paused and 'p' is pressed
                 } else {
-                    fmt.Printf("Paused %d\n", n)
+                    fmt.Printf("Paused (Turn %d)\n", n)
                     paused = true
 
                     // while we are paused and 'q' has not been pressed
@@ -254,14 +256,14 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
                         case k := <-keyChan:
                             if k == "p" {
                                 paused = false
-                                fmt.Println("Continuing")
+                                fmt.Println("Continuing...")
                             } else if k == "s" {
 
                                 requestDataFromWorkers(outSliceChans)
                                 sPressed(p, d, world, disChans, n)
 
                             } else if k == "q" {
-                                fmt.Println("q")
+                                fmt.Println("Quitting...")
                                 quit = true
 
                                 // we only request the data and the data is written after the turns loop
@@ -279,7 +281,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
             // if q is pressed tell the workers to send the world to the distributor
             // also terminate the program
             } else if c == "q" {
-                fmt.Println("q outer")
+                fmt.Println("Quitting...")
                 quit = true
 
                 // we only request the data and the data is written after the turns loop
