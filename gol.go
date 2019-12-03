@@ -63,39 +63,37 @@ func worker(n, height, width, turns int, wc workerChans, keyAvailable *bool) {
             wc.belowSend <- strip[height - 2][haloX]
         }
 
-        if *keyAvailable{
-          c := <-wc.keyRec
-          if c == "p" {
-              if paused {
-                  paused = false
-                  fmt.Println("Continuing not")
-              } else {
-                paused = true
-                fmt.Printf("The paused turn is %d, %d\n", turn, n)
+        // keys are not functional in this branch
+        if *keyAvailable {
+            c := <-wc.keyRec
+            if c == "p" {
+                if paused {
+                    paused = false
+                    fmt.Println("Continuing not")
+                } else {
+                    paused = true
+                    fmt.Printf("The paused turn is %d, %d\n", turn, n)
 
-                for paused {
-                      select {
-                      case c := <-wc.keyRec:
-                          if c == "s" {
-                              fmt.Println("Pressed S")
-                          }else if c == "p" {
-                              fmt.Println("Continuing")
-                              paused = false
-                          } else if c == "q" {
-                              fmt.Println("Pressed Q")
-                          }
-                      }
-                  }
+                    for paused {
+                        select {
+                        case c := <-wc.keyRec:
+                            if c == "s" {
+                                fmt.Println("Pressed S")
+                            }else if c == "p" {
+                                fmt.Println("Continuing")
+                                paused = false
+                            } else if c == "q" {
+                                fmt.Println("Pressed Q")
+                            }
+                        }
+                    }
                 }
-          } else if c == "s" {
-              fmt.Println("Pressed S")
-          } else if c == "q" {
-              fmt.Println("Pressed Q")
-          }
+            } else if c == "s" {
+                fmt.Println("Pressed S")
+            } else if c == "q" {
+                fmt.Println("Pressed Q")
+            }
         }
-
-
-
 
         // receive halos
         for haloX := 0; haloX < width; haloX++ {
@@ -176,7 +174,8 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     keyChans := make([]chan string, p.threads)
 
     for i := 0; i < 2 * p.threads; i++ {
-        c := make(chan byte, 2 * p.imageWidth)        //double so pause works, allows 2 halo's to be sent, so doesn't dead lock
+        // double so pause works, allows 2 halo's to be sent, so doesn't dead lock
+        c := make(chan byte, 2 * p.imageWidth) 
         sendChans[i] = c
         recChans[i] = c
     }
@@ -212,8 +211,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         }
     }
 
-    // the magic happens
-    // it actually does
+    // the workers perform their computation
 
     //receiving data from the workers and reconstructing
     for i := 0; i < p.threads; i++ {
@@ -227,75 +225,6 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
             }
         }
     }
-
-    // kind of bad, but idk
-    // we have to have the second select statement because we need a select
-    // statement without a default case to stop the busy waiting.
-
-    //     fmt.Println("sending")
-    //pressing s prints the current state of the board out to a file
-    // pressing p pauses execution, pressing p again unpauses
-    // pressing q does something.......
-    // select {
-    // case ascii_value := <-d.key:
-    //     c := string(ascii_value)
-
-    //     if c == "s" {
-    //         fmt.Println("Pressed S")
-    //         sPressed(p, d, world, turns)
-
-    //     } else if c == "p" {
-    //         if paused {
-    //             fmt.Println("Continuing")
-    //             paused = false
-    //         } else {
-    //             fmt.Printf("The current turn is %d\n", turns + 1)
-    //             paused = true
-
-    //             for paused && !needToStop {
-    //                 select {
-    //                 case ascii_value := <-d.key:
-    //                     c := string(ascii_value)
-    //                     if c == "s" {
-    //                         fmt.Println("Pressed S")
-    //                         sPressed(p, d, world, turns)
-
-    //                     } else if c == "p" {
-    //                         fmt.Println("Continuing")
-    //                         paused = false
-    //                     } else if c == "q" {
-    //                         fmt.Println("Pressed Q")
-    //                         sPressed(p, d, world, turns)
-    //                         needToStop = true
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     } else if c == "q" {
-    //         fmt.Println("Pressed Q")
-    //         sPressed(p, d, world, turns)
-    //         needToStop = true
-    //     }
-
-    // default:
-    // }
-
-    // if !paused {
-    //     select {
-    //     case <-d.timer:
-    //         // count alive cells
-    //         var sum int
-    //         for y := 0; y < p.imageHeight; y++ {
-    //             for x := 0; x < p.imageWidth; x++ {
-    //                 if world[y][x] == 255 {
-    //                     sum += 1
-    //                 }
-    //             }
-    //         }
-    //         fmt.Printf("There are currently %d cells alive\n", sum)
-    //     default:
-    //     }
-    // }
 
     // Request the io goroutine to output the image with the given filename.
     d.io.command <- ioOutput

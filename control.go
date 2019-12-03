@@ -12,18 +12,18 @@ func getKeyboardCommand(keyChans []chan string, keyAvailable *bool) {
         event := termbox.PollEvent()
         if event.Type == termbox.EventKey {
             if event.Key != 0 {
-              *keyAvailable = true
-      				for _, keyChan := range keyChans {
-      					keyChan <- string(rune(event.Key))
-      				}
-              *keyAvailable = false
+                *keyAvailable = true
+                for _, keyChan := range keyChans {
+                    keyChan <- string(rune(event.Key))
+                }
+                *keyAvailable = false
             } else if event.Ch != 0 {
-              *keyAvailable = true
-      				for i, keyChan := range keyChans {
-                fmt.Println(i)
-      					keyChan <- string(event.Ch)
-      				}
-              *keyAvailable = false
+                *keyAvailable = true
+                for i, keyChan := range keyChans {
+                    fmt.Println(i)
+                    keyChan <- string(event.Ch)
+                }
+                *keyAvailable = false
             }
         }
     }
