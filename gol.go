@@ -50,7 +50,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
             for x := 0; x < p.imageWidth; x++ {
                 var sum int
                 sum =   int(world[mod((y-1) ,p.imageHeight)][mod((x-1) ,p.imageWidth)]) + int(world[mod((y-1), p.imageHeight)][mod((x), p.imageWidth)]) + int(world[mod((y-1), p.imageHeight)][mod((x+1), p.imageWidth)]) +
-                        int(world[mod((y), p.imageHeight)][mod((x-1), p.imageWidth)])                             x                                       int(world[(y) % p.imageHeight][(x+1) % p.imageWidth]) +
+                        int(world[mod((y), p.imageHeight)][mod((x-1), p.imageWidth)])                             +                                       int(world[(y) % p.imageHeight][(x+1) % p.imageWidth]) +
                         int(world[mod((y+1), p.imageHeight)][mod((x-1), p.imageWidth)]) + int(world[(y+1) % p.imageHeight][(x) % p.imageWidth])         + int(world[(y+1) % p.imageHeight][(x+1) % p.imageWidth])
                 sum /= 255
 
