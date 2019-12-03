@@ -2,21 +2,20 @@ package main
 
 import (
     "fmt"
+    "math"
     "strconv"
     "strings"
-    "math"
     "time"
 )
 
 type workerChans struct {
-
-    disChan chan byte     // disChan - the channel which the cell data is sent to the worker along, and
-                          //           which the cell data is sent back to the distributor through
+    disChan chan byte // disChan - the channel which the cell data is sent to the worker along, and
+    //           which the cell data is sent back to the distributor through
     aboveSend chan<- byte // aboveSend - the channel where the halo for the worker above is sent
-    aboveRec <-chan byte  // aboveRec - the channel where the halo from the worker above is received
+    aboveRec  <-chan byte // aboveRec - the channel where the halo from the worker above is received
     belowSend chan<- byte // belowSend - the channel where the halo for the worker below is sent
-    belowRec <-chan byte  // belowRec - the channel where the halo from the worker below is received
-    outSlice <-chan bool  // to tell the worker to output its slice
+    belowRec  <-chan byte // belowRec - the channel where the halo from the worker below is received
+    outSlice  <-chan bool // to tell the worker to output its slice
 }
 
 // performs x mod y
@@ -24,10 +23,10 @@ type workerChans struct {
 // eg -1 mod 8 = 7
 func mod(x int, y int) int {
     m := x % y
-    if x < 0 && y < 0{
+    if x < 0 && y < 0 {
         m -= y
     }
-    if x < 0 && y > 0{
+    if x < 0 && y > 0 {
         m += y
     }
     return m
@@ -57,74 +56,73 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
 
     cond := true
     for turn := 0; turn < turns; turn++ {
-      //fmt.Printf("The current turn is %d, %d\n", turn, n)
+        //fmt.Printf("The current turn is %d, %d\n", turn, n)
 
-      cond = true
-      for cond{
-        select{
-        case _ = <-wc.outSlice:
-          // send the cell data back to the distributor after all the turns have been
-          // completed
-          for y := 1; y < height - 1; y++ {
-              for x := 0; x < width; x++ {
-                  wc.disChan <- strip[y][x]
-              }
-          }
-        case _ = <-tickChan:
-          cond = false
+        cond = true
+        for cond {
+            select {
+            case _ = <-wc.outSlice:
+                // send the cell data back to the distributor after all the turns have been
+                // completed
+                for y := 1; y < height-1; y++ {
+                    for x := 0; x < width; x++ {
+                        wc.disChan <- strip[y][x]
+                    }
+                }
+            case _ = <-tickChan:
+                cond = false
+            }
         }
-      }
 
-      // send halos
-      for haloX := 0; haloX < width; haloX++ {
-          wc.aboveSend <- strip[1][haloX]
-          wc.belowSend <- strip[height - 2][haloX]
-      }
+        // send halos
+        for haloX := 0; haloX < width; haloX++ {
+            wc.aboveSend <- strip[1][haloX]
+            wc.belowSend <- strip[height-2][haloX]
+        }
 
+        // receive halos
+        for haloX := 0; haloX < width; haloX++ {
+            strip[0][haloX] = <-wc.aboveRec
+            strip[height-1][haloX] = <-wc.belowRec
+        }
 
-      // receive halos
-      for haloX := 0; haloX < width; haloX++ {
-          strip[0][haloX]          = <-wc.aboveRec
-          strip[height - 1][haloX] = <-wc.belowRec
-      }
+        // for each cell (excluding the halo rows)
+        for y := 1; y < height-1; y++ {
+            for x := 0; x < width; x++ {
 
-      // for each cell (excluding the halo rows)
-      for y := 1; y < height - 1; y++ {
-          for x := 0; x < width; x++ {
+                var sum int
+                // + + +
+                // + . + calculate the number of neighbours
+                // + + +
+                sum = int(strip[mod((y-1), height)][mod((x-1), width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
+                    int(strip[mod((y), height)][mod((x-1), width)]) + int(strip[(y)%height][(x+1)%width]) +
+                    int(strip[mod((y+1), height)][mod((x-1), width)]) + int(strip[(y+1)%height][(x)%width]) + int(strip[(y+1)%height][(x+1)%width])
+                // division by 255 because an alive cell is stored as 255 in
+                // the image file
+                sum /= 255
 
-              var sum int
-              // + + +
-              // + . + calculate the number of neighbours
-              // + + +
-              sum = int(strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
-                    int(strip[mod((y), height)][mod((x-1), width)])                        +                              int(strip[(y) % height][(x+1) % width])           +
-                    int(strip[mod((y+1), height)][mod((x-1), width)]) +     int(strip[(y+1) % height][(x) % width])     + int(strip[(y+1) % height][(x+1) % width])
-              // division by 255 because an alive cell is stored as 255 in
-              // the image file
-              sum /= 255
+                // game of life logic
+                if strip[y][x] == 255 && sum < 2 {
+                    buffStrip[y][x] = 0
+                } else if strip[y][x] == 255 && sum > 3 {
+                    buffStrip[y][x] = 0
+                } else if strip[y][x] == 0 && sum == 3 {
+                    buffStrip[y][x] = 255
+                } else if strip[y][x] == 255 && (sum == 3 || sum == 2) {
+                    buffStrip[y][x] = strip[y][x]
+                } else {
+                    buffStrip[y][x] = 0
+                }
+            }
+        }
 
-              // game of life logic
-              if strip[y][x] == 255 && sum < 2 {
-                  buffStrip[y][x] = 0
-              } else if strip[y][x] == 255 && sum > 3 {
-                  buffStrip[y][x] = 0
-              } else if strip[y][x] == 0 && sum == 3 {
-                  buffStrip[y][x] = 255
-              } else if strip[y][x] == 255 && (sum == 3 || sum == 2) {
-                  buffStrip[y][x] = strip[y][x]
-              } else {
-                  buffStrip[y][x] = 0
-              }
-          }
-      }
-
-      // swap the pointers
-      strip, buffStrip = buffStrip, strip
+        // swap the pointers
+        strip, buffStrip = buffStrip, strip
     }
 
     // send the cell data back to the distributor after all the turns have been
     // completed
-    for y := 1; y < height - 1; y++ {
+    for y := 1; y < height-1; y++ {
         for x := 0; x < width; x++ {
             wc.disChan <- strip[y][x]
         }
@@ -156,13 +154,13 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
     // create a channels for the halo exchange
     disChans := make([]chan byte, p.threads)
-    sendChans := make([]chan<- byte, 2 * p.threads)
-    recChans := make([]<-chan byte, 2 * p.threads)
+    sendChans := make([]chan<- byte, 2*p.threads)
+    recChans := make([]<-chan byte, 2*p.threads)
     tickChans := make([]chan bool, p.threads)
     outSliceChans := make([]chan bool, p.threads)
 
-    for i := 0; i < 2 * p.threads; i++ {
-        c := make(chan byte, 2 * p.imageWidth)        //double so pause works, allows 2 halo's to be sent, so doesn't dead lock
+    for i := 0; i < 2*p.threads; i++ {
+        c := make(chan byte, 2*p.imageWidth) //double so pause works, allows 2 halo's to be sent, so doesn't dead lock
         sendChans[i] = c
         recChans[i] = c
     }
@@ -171,28 +169,27 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     go getKeyboardCommand(keyChan)
     t := time.NewTicker(time.Second * 2)
 
-
     //sending data to the workers
     for i := 0; i < p.threads; i++ {
         disChans[i] = make(chan byte)
         tickChans[i] = make(chan bool)
         outSliceChans[i] = make(chan bool)
 
-        lowerBound := int(math.Round(float64(p.imageHeight * i) / float64(p.threads)))
-        upperBound := int(math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads))))
+        lowerBound := int(math.Round(float64(p.imageHeight*i) / float64(p.threads)))
+        upperBound := int(math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads))))
 
         // assign the correct channels to the worker
         var wc workerChans
         wc.disChan = disChans[i]
-        wc.aboveSend = sendChans[i * 2]
-        wc.aboveRec = recChans[mod((i * 2) - 1, 2 * p.threads)]
-        wc.belowSend = sendChans[(i * 2) + 1]
-        wc.belowRec = recChans[mod((i + 1) * 2, 2 * p.threads)]
+        wc.aboveSend = sendChans[i*2]
+        wc.aboveRec = recChans[mod((i*2)-1, 2*p.threads)]
+        wc.belowSend = sendChans[(i*2)+1]
+        wc.belowRec = recChans[mod((i+1)*2, 2*p.threads)]
         wc.outSlice = outSliceChans[i]
 
-        go worker(i, int(upperBound - lowerBound) + 2, p.imageWidth, p.turns, wc, tickChans[i])
+        go worker(i, int(upperBound-lowerBound)+2, p.imageWidth, p.turns, wc, tickChans[i])
 
-        for y := lowerBound - 1; y < upperBound + 1; y++ {
+        for y := lowerBound - 1; y < upperBound+1; y++ {
             for x := 0; x < p.imageWidth; x++ {
                 disChans[i] <- world[mod(y, p.imageHeight)][x]
             }
@@ -201,140 +198,129 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
 
     paused := false
     quit := false
-    for n := 0; n < p.turns && !quit; n++{
-      select{
-      case <- t.C:
-        for _, outSliceChan := range outSliceChans{
-          outSliceChan <- true
-        }
+    for n := 0; n < p.turns && !quit; n++ {
+        select {
+        case <-t.C:
+            for _, outSliceChan := range outSliceChans {
+                outSliceChan <- true
+            }
 
-        sum := 0
+            sum := 0
 
-        for i := 0; i < p.threads; i++ {
+            for i := 0; i < p.threads; i++ {
 
-            lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
-            upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
+                lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
+                upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
 
-            for y := lowerBound; y < upperBound; y++ {
-                for x := 0; x < p.imageWidth; x++ {
-                    sum += int(<-disChans[i])
+                for y := lowerBound; y < upperBound; y++ {
+                    for x := 0; x < p.imageWidth; x++ {
+                        sum += int(<-disChans[i])
+                    }
                 }
             }
-        }
-        sum /= 255
-        fmt.Printf("The number of alive cells are - %d\n", sum)
-      case c := <-keyChan:
-        if c == "p"{
-          if paused{
-            paused = false
-            fmt.Println("Continuing")
-          }else{
-            fmt.Printf("Paused %d\n", n)
-            paused = true
-            for paused && !quit{
-              select{
-              case k := <-keyChan:
-                if k == "p"{
-                  paused = false
-                  fmt.Println("Continuing")
-                }else if k == "s"{
-                  for _, outSliceChan := range outSliceChans{
-                    outSliceChan <- true
-                  }
+            sum /= 255
+            fmt.Printf("The number of alive cells are - %d\n", sum)
+        case c := <-keyChan:
+            if c == "p" {
+                if paused {
+                    paused = false
+                    fmt.Println("Continuing")
+                } else {
+                    fmt.Printf("Paused %d\n", n)
+                    paused = true
+                    for paused && !quit {
+                        select {
+                        case k := <-keyChan:
+                            if k == "p" {
+                                paused = false
+                                fmt.Println("Continuing")
+                            } else if k == "s" {
+                                for _, outSliceChan := range outSliceChans {
+                                    outSliceChan <- true
+                                }
 
-                  //recombine
-                  for i := 0; i < p.threads; i++ {
+                                //recombine
+                                for i := 0; i < p.threads; i++ {
 
-                      lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
-                      upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
+                                    lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
+                                    upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
 
-                      for y := lowerBound; y < upperBound; y++ {
-                          for x := 0; x < p.imageWidth; x++ {
-                              world[int(y)][x] = <-disChans[i]
-                          }
-                      }
-                  }
+                                    for y := lowerBound; y < upperBound; y++ {
+                                        for x := 0; x < p.imageWidth; x++ {
+                                            world[int(y)][x] = <-disChans[i]
+                                        }
+                                    }
+                                }
 
-                  d.io.command <- ioOutput
-                  d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
+                                d.io.command <- ioOutput
+                                d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
 
-                  // The io goroutine sends the requested image byte by byte, in rows.
-                  for y := 0; y < p.imageHeight; y++ {
-                      for x := 0; x < p.imageWidth; x++ {
-                          d.io.outputVal <- world[y][x]
-                      }
-                  }
+                                // The io goroutine sends the requested image byte by byte, in rows.
+                                for y := 0; y < p.imageHeight; y++ {
+                                    for x := 0; x < p.imageWidth; x++ {
+                                        d.io.outputVal <- world[y][x]
+                                    }
+                                }
 
-
-                }else if k == "q"{
-                  fmt.Println("q")
-                  quit = true
-                  for _, outSliceChan := range outSliceChans{
-                    outSliceChan <- true
-                  }
+                            } else if k == "q" {
+                                fmt.Println("q")
+                                quit = true
+                                for _, outSliceChan := range outSliceChans {
+                                    outSliceChan <- true
+                                }
+                            }
+                        }
+                    }
                 }
-              }
+            } else if c == "s" {
+                for _, outSliceChan := range outSliceChans {
+                    outSliceChan <- true
+                }
+
+                //recombine
+                for i := 0; i < p.threads; i++ {
+
+                    lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
+                    upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
+
+                    for y := lowerBound; y < upperBound; y++ {
+                        for x := 0; x < p.imageWidth; x++ {
+                            world[int(y)][x] = <-disChans[i]
+                        }
+                    }
+                }
+
+                d.io.command <- ioOutput
+                d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
+
+                // The io goroutine sends the requested image byte by byte, in rows.
+                for y := 0; y < p.imageHeight; y++ {
+                    for x := 0; x < p.imageWidth; x++ {
+                        d.io.outputVal <- world[y][x]
+                    }
+                }
+            } else if c == "q" {
+                fmt.Println("q outer")
+
+                quit = true
+
+                for _, outSliceChan := range outSliceChans {
+                    outSliceChan <- true
+                }
             }
-          }
-        }else if c == "s" {
-          for _, outSliceChan := range outSliceChans{
-            outSliceChan <- true
-          }
-
-          //recombine
-          for i := 0; i < p.threads; i++ {
-
-              lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
-              upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
-
-              for y := lowerBound; y < upperBound; y++ {
-                  for x := 0; x < p.imageWidth; x++ {
-                      world[int(y)][x] = <-disChans[i]
-                  }
-              }
-          }
-
-          d.io.command <- ioOutput
-          d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
-
-          // The io goroutine sends the requested image byte by byte, in rows.
-          for y := 0; y < p.imageHeight; y++ {
-              for x := 0; x < p.imageWidth; x++ {
-                  d.io.outputVal <- world[y][x]
-              }
-          }
-        } else if c == "q" {
-          fmt.Println("q outer")
-
-          quit = true
-
-          for _, outSliceChan := range outSliceChans{
-            outSliceChan <- true
-          }
+        default:
         }
-      default:
-      }
 
-
-
-
-
-      for j := 0; j < p.threads && !quit; j++{
-        tickChans[j] <- true
-      }
+        for j := 0; j < p.threads && !quit; j++ {
+            tickChans[j] <- true
+        }
     }
 
-
-
-
-    // the magic happens
-    // it actually does
-
-    //receiving data from the workers and reconstructing
+    // receiving data from the workers and reconstructing
     for i := 0; i < p.threads; i++ {
 
-        lowerBound := math.Round(float64(p.imageHeight * i) / float64(p.threads))
-        upperBound := math.Round((float64(p.imageHeight * (i + 1)) / float64(p.threads)))
+        lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
+        upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
 
         for y := lowerBound; y < upperBound; y++ {
             for x := 0; x < p.imageWidth; x++ {
@@ -343,79 +329,9 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         }
     }
 
-    // kind of bad, but idk
-    // we have to have the second select statement because we need a select
-    // statement without a default case to stop the busy waiting.
-
-    //     fmt.Println("sending")
-    //pressing s prints the current state of the board out to a file
-    // pressing p pauses execution, pressing p again unpauses
-    // pressing q does something.......
-    // select {
-    // case ascii_value := <-d.key:
-    //     c := string(ascii_value)
-
-    //     if c == "s" {
-    //         fmt.Println("Pressed S")
-    //         sPressed(p, d, world, turns)
-
-    //     } else if c == "p" {
-    //         if paused {
-    //             fmt.Println("Continuing")
-    //             paused = false
-    //         } else {
-    //             fmt.Printf("The current turn is %d\n", turns + 1)
-    //             paused = true
-
-    //             for paused && !needToStop {
-    //                 select {
-    //                 case ascii_value := <-d.key:
-    //                     c := string(ascii_value)
-    //                     if c == "s" {
-    //                         fmt.Println("Pressed S")
-    //                         sPressed(p, d, world, turns)
-
-    //                     } else if c == "p" {
-    //                         fmt.Println("Continuing")
-    //                         paused = false
-    //                     } else if c == "q" {
-    //                         fmt.Println("Pressed Q")
-    //                         sPressed(p, d, world, turns)
-    //                         needToStop = true
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     } else if c == "q" {
-    //         fmt.Println("Pressed Q")
-    //         sPressed(p, d, world, turns)
-    //         needToStop = true
-    //     }
-
-    // default:
-    // }
-
-    // if !paused {
-    //     select {
-    //     case <-d.timer:
-    //         // count alive cells
-    //         var sum int
-    //         for y := 0; y < p.imageHeight; y++ {
-    //             for x := 0; x < p.imageWidth; x++ {
-    //                 if world[y][x] == 255 {
-    //                     sum += 1
-    //                 }
-    //             }
-    //         }
-    //         fmt.Printf("There are currently %d cells alive\n", sum)
-    //     default:
-    //     }
-    // }
-
     // Request the io goroutine to output the image with the given filename.
     d.io.command <- ioOutput
     d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x")
-
 
     // The io goroutine sends the requested image byte by byte, in rows.
     for y := 0; y < p.imageHeight; y++ {
