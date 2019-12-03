@@ -95,10 +95,9 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
                 // + . + calculate the number of neighbours
                 // + + +
                 sum = int(strip[mod((y-1), height)][mod((x-1), width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
-                    int(strip[mod((y), height)][mod((x-1), width)]) + int(strip[(y)%height][(x+1)%width]) +
-                    int(strip[mod((y+1), height)][mod((x-1), width)]) + int(strip[(y+1)%height][(x)%width]) + int(strip[(y+1)%height][(x+1)%width])
-                // division by 255 because an alive cell is stored as 255 in
-                // the image file
+                      int(strip[mod((y), height)][mod((x-1), width)])   + int(strip[(y)%height][(x+1)%width]) +
+                      int(strip[mod((y+1), height)][mod((x-1), width)]) + int(strip[(y+1)%height][(x)%width]) + int(strip[(y+1)%height][(x+1)%width])
+                // division by 255 because an alive cell is stored as 255 in the image file
                 sum /= 255
 
                 // game of life logic
@@ -152,11 +151,17 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
         }
     }
 
-    // create a channels for the halo exchange
-    disChans := make([]chan byte, p.threads)
+    // create all the channels for the halo exchange
     sendChans := make([]chan<- byte, 2*p.threads)
     recChans := make([]<-chan byte, 2*p.threads)
+
+    // these channels are for sending and receiving the bytes to and from the workers
+    disChans := make([]chan byte, p.threads)
+
+    // these channels are for telling the workers to perform their next turn
     tickChans := make([]chan bool, p.threads)
+
+    // these channels are for telling the workers to output their current data
     outSliceChans := make([]chan bool, p.threads)
 
     for i := 0; i < 2*p.threads; i++ {
@@ -200,13 +205,13 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     quit := false
     for n := 0; n < p.turns && !quit; n++ {
         select {
+        // this case is run every 2 seconds to print out the number of alive cells
         case <-t.C:
-            for _, outSliceChan := range outSliceChans {
-                outSliceChan <- true
-            }
+            
+            requestDataFromWorkers(outSliceChans)
 
+            // sum up the number of alive cells in the world
             sum := 0
-
             for i := 0; i < p.threads; i++ {
 
                 lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
@@ -219,95 +224,70 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
                 }
             }
             sum /= 255
+
             fmt.Printf("The number of alive cells are - %d\n", sum)
+
+        // this case is run when the user presses a key
         case c := <-keyChan:
             if c == "p" {
+                // if we are paused unpause
+                // this code should never run
                 if paused {
                     paused = false
                     fmt.Println("Continuing")
+
+                // called when we are not paused and 'p' is pressed
                 } else {
                     fmt.Printf("Paused %d\n", n)
                     paused = true
+
+                    // while we are paused and 'q' has not been pressed
                     for paused && !quit {
+                        // this select is here so that whilst the simulation is paused
+
+                        // the keys can still be pressed and used
+                        // this does not busy wait because we wait on keyChan
+
+                        // the select also does not have a default case, this is because
+                        // the user must press a key to exit the paused state.
                         select {
                         case k := <-keyChan:
                             if k == "p" {
                                 paused = false
                                 fmt.Println("Continuing")
                             } else if k == "s" {
-                                for _, outSliceChan := range outSliceChans {
-                                    outSliceChan <- true
-                                }
 
-                                //recombine
-                                for i := 0; i < p.threads; i++ {
-
-                                    lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
-                                    upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
-
-                                    for y := lowerBound; y < upperBound; y++ {
-                                        for x := 0; x < p.imageWidth; x++ {
-                                            world[int(y)][x] = <-disChans[i]
-                                        }
-                                    }
-                                }
-
-                                d.io.command <- ioOutput
-                                d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
-
-                                // The io goroutine sends the requested image byte by byte, in rows.
-                                for y := 0; y < p.imageHeight; y++ {
-                                    for x := 0; x < p.imageWidth; x++ {
-                                        d.io.outputVal <- world[y][x]
-                                    }
-                                }
+                                requestDataFromWorkers(outSliceChans)
+                                sPressed(p, d, world, disChans, n)
 
                             } else if k == "q" {
                                 fmt.Println("q")
                                 quit = true
-                                for _, outSliceChan := range outSliceChans {
-                                    outSliceChan <- true
-                                }
+
+                                // we only request the data and the data is written after the turns loop
+                                // has exited
+                                requestDataFromWorkers(outSliceChans)
                             }
                         }
                     }
                 }
             } else if c == "s" {
-                for _, outSliceChan := range outSliceChans {
-                    outSliceChan <- true
-                }
 
-                //recombine
-                for i := 0; i < p.threads; i++ {
+                requestDataFromWorkers(outSliceChans)
+                sPressed(p, d, world, disChans, n)
 
-                    lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
-                    upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
-
-                    for y := lowerBound; y < upperBound; y++ {
-                        for x := 0; x < p.imageWidth; x++ {
-                            world[int(y)][x] = <-disChans[i]
-                        }
-                    }
-                }
-
-                d.io.command <- ioOutput
-                d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
-
-                // The io goroutine sends the requested image byte by byte, in rows.
-                for y := 0; y < p.imageHeight; y++ {
-                    for x := 0; x < p.imageWidth; x++ {
-                        d.io.outputVal <- world[y][x]
-                    }
-                }
+            // if q is pressed tell the workers to send the world to the distributor
+            // also terminate the program
             } else if c == "q" {
                 fmt.Println("q outer")
-
                 quit = true
 
-                for _, outSliceChan := range outSliceChans {
-                    outSliceChan <- true
-                }
+                // we only request the data and the data is written after the turns loop
+                // has exited
+                requestDataFromWorkers(outSliceChans)
             }
+        // the default case exists to ensure that the execution can still continue
+        // even if the user does not press a key
         default:
         }
 
@@ -359,14 +339,34 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
     alive <- finalAlive
 }
 
-// n is value to append to filename as the turn number
-func sPressed(p golParams, d distributorChans, world [][]byte, n int) {
-    d.io.command <- ioOutput
-    d.io.filename <- strconv.Itoa(p.imageWidth) + "x" + strconv.Itoa(p.imageHeight) + "t" + strconv.Itoa(n)
+func sPressed(p golParams, d distributorChans, world [][]byte, disChans []chan byte, n int) {
 
+    // recombine the board with the data from the workers
+    for i := 0; i < p.threads; i++ {
+
+        lowerBound := math.Round(float64(p.imageHeight*i) / float64(p.threads))
+        upperBound := math.Round((float64(p.imageHeight*(i+1)) / float64(p.threads)))
+
+        for y := lowerBound; y < upperBound; y++ {
+            for x := 0; x < p.imageWidth; x++ {
+                world[int(y)][x] = <-disChans[i]
+            }
+        }
+    }
+
+    d.io.command <- ioOutput
+    d.io.filename <- strings.Join([]string{strconv.Itoa(p.imageWidth), strconv.Itoa(p.imageHeight)}, "x") + "t" + strconv.Itoa(n)
+
+    // The io goroutine sends the requested image byte by byte, in rows.
     for y := 0; y < p.imageHeight; y++ {
         for x := 0; x < p.imageWidth; x++ {
             d.io.outputVal <- world[y][x]
         }
+    }
+}
+
+func requestDataFromWorkers(outSliceChans []chan bool) {
+    for _, outSliceChan := range outSliceChans {
+        outSliceChan <- true
     }
 }
