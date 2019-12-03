@@ -236,11 +236,11 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
                 // this code should never run
                 if paused {
                     paused = false
-                    fmt.Println("Continuing")
+                    fmt.Println("Continuing...")
 
                 // called when we are not paused and 'p' is pressed
                 } else {
-                    fmt.Printf("Paused %d\n", n)
+                    fmt.Printf("Paused (Turn %d)\n", n)
                     paused = true
 
                     // while we are paused and 'q' has not been pressed
@@ -256,14 +256,14 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
                         case k := <-keyChan:
                             if k == "p" {
                                 paused = false
-                                fmt.Println("Continuing")
+                                fmt.Println("Continuing...")
                             } else if k == "s" {
 
                                 requestDataFromWorkers(outSliceChans)
                                 sPressed(p, d, world, disChans, n)
 
                             } else if k == "q" {
-                                fmt.Println("q")
+                                fmt.Println("Quitting...")
                                 quit = true
 
                                 // we only request the data and the data is written after the turns loop
@@ -281,7 +281,7 @@ func distributor(p golParams, d distributorChans, alive chan []cell) {
             // if q is pressed tell the workers to send the world to the distributor
             // also terminate the program
             } else if c == "q" {
-                fmt.Println("q outer")
+                fmt.Println("Quitting...")
                 quit = true
 
                 // we only request the data and the data is written after the turns loop
