@@ -90,15 +90,74 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
 
       // for each cell (excluding the halo rows)
       for y := 1; y < height - 1; y++ {
-          for x := 0; x < width; x++ {
+          //left column
+          x := 0
+          var sum int
+          // + + +
+          // + . + calculate the number of neighbours
+          // + + +
+          sum = int(strip[y-1][width-1]) +  int(strip[y-1][x])  +  int(strip[y-1][x+1]) +
+                int(strip[y][width-1])                +             int(strip[y][x+1])   +
+                int(strip[y+1][width-1])  +   int(strip[y+1][x]) +  int(strip[y+1][x+1])
+          // division by 255 because an alive cell is stored as 255 in
+          // the image file
+          sum /= 255
+
+          // game of life logic
+          if strip[y][x] == 255 && sum < 2 {
+              buffStrip[y][x] = 0
+          } else if strip[y][x] == 255 && sum > 3 {
+              buffStrip[y][x] = 0
+          } else if strip[y][x] == 0 && sum == 3 {
+              buffStrip[y][x] = 255
+          } else if strip[y][x] == 255 && (sum == 3 || sum == 2) {
+              buffStrip[y][x] = strip[y][x]
+          } else {
+              buffStrip[y][x] = 0
+          }
+
+
+          //right column
+          x = width-1
+          sum = 0
+          // + + +
+          // + . + calculate the number of neighbours
+          // + + +
+          sum = int(strip[y-1][x-1]) +  int(strip[y-1][x])  +  int(strip[y-1][0]) +
+                int(strip[y][x-1])                +             int(strip[y][0])   +
+                int(strip[y+1][x-1])  +   int(strip[y+1][x]) +  int(strip[y+1][0])
+          // division by 255 because an alive cell is stored as 255 in
+          // the image file
+          sum /= 255
+
+          // game of life logic
+          if strip[y][x] == 255 && sum < 2 {
+              buffStrip[y][x] = 0
+          } else if strip[y][x] == 255 && sum > 3 {
+              buffStrip[y][x] = 0
+          } else if strip[y][x] == 0 && sum == 3 {
+              buffStrip[y][x] = 255
+          } else if strip[y][x] == 255 && (sum == 3 || sum == 2) {
+              buffStrip[y][x] = strip[y][x]
+          } else {
+              buffStrip[y][x] = 0
+          }
+      }
+
+
+
+
+      // for each cell (excluding the halo rows and edge columns)
+      for y := 1; y < height - 1; y++ {
+          for x := 1; x < width - 1; x++ {
 
               var sum int
               // + + +
               // + . + calculate the number of neighbours
               // + + +
-              sum = int(strip[mod((y-1) ,height)][mod((x-1) ,width)]) + int(strip[mod((y-1), height)][mod((x), width)]) + int(strip[mod((y-1), height)][mod((x+1), width)]) +
-                    int(strip[mod((y), height)][mod((x-1), width)])                        +                              int(strip[(y) % height][(x+1) % width])           +
-                    int(strip[mod((y+1), height)][mod((x-1), width)]) +     int(strip[(y+1) % height][(x) % width])     + int(strip[(y+1) % height][(x+1) % width])
+              sum = int(strip[y-1][x-1]) + int(strip[y-1][x]) + int(strip[y-1][x+1]) +
+                    int(strip[y][x-1])               +          int(strip[y][x+1])   +
+                    int(strip[y+1][x-1]) + int(strip[y+1][x]) + int(strip[y+1][x+1])
               // division by 255 because an alive cell is stored as 255 in
               // the image file
               sum /= 255
