@@ -59,3 +59,18 @@ stage4SyncVBAD branch - sync tick halo exchange
 10 - 35.385
 Average - 35.869
 Standard Deviation - 1.559
+
+noMod branch - no mod sync halo exchange
+1 - 26.695
+2 - 28.353
+3 - 23.608
+4 - 25.595
+5 - 27.422
+6 - 26.473
+7 - 25.867
+8 - 27.320
+9 - 27.941
+10 - 24.614
+Average - 26.389
+Standard Deviation - 1.494
+
