@@ -88,7 +88,7 @@ func worker(n, height, width, turns int, wc workerChans, tickChan chan bool) {
           strip[height - 1][haloX] = <-wc.belowRec
       }
 
-      // for each cell (excluding the halo rows)
+      // for each cell along the left and right boundaries
       for y := 1; y < height - 1; y++ {
           //left column
           x := 0
